@@ -219,8 +219,11 @@ export function apply(ctx: Context): void {
           const imageIds = from.snapshot.imageIds
           const next = inputHub.shell(nextId)
           if (imageIds.length === 0 || next.addImages(imageIds)) {
-            if (draft !== '') {
-              next.setDraft(draft)
+            // Never migrate a whitespace-only draft (see the hero-restore
+            // patch in skeleton/ConversationSession.tsx); migrate the trimmed text.
+            const migrated = draft.trim()
+            if (migrated !== '') {
+              next.setDraft(migrated)
               from.setDraft('')
             }
             if (imageIds.length > 0) {

@@ -151,7 +151,11 @@ export function ConversationSession({
   const inspect = useStore(s => s.inspect ?? null)
 
   useEffect(() => {
-    if (inputState.draft === '' && storedDraft !== '') inputActions.setDraft(storedDraft)
+    // A persisted draft that is only whitespace (e.g. a lone "\n" left by
+    // Shift+Enter on the empty composer) must not be restored — it would put
+    // the caret on line two on every open. Restore the trimmed text instead.
+    const restored = storedDraft.trim()
+    if (inputState.draft === '' && restored !== '') inputActions.setDraft(restored)
     const unmirror = bindDraftMirror(actions.setDraft)
     return () => { unmirror() }
     // Mount-only (deps pinned to inputActions): later store writes come from
