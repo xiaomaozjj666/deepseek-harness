@@ -326,16 +326,7 @@ export function InputBar({
       return
     }
     if (e.key !== 'Enter') return
-    // An IME-confirming Enter must not fall through to the textarea's native
-    // newline insertion: without preventDefault the browser inserts "\n" while
-    // the composition is still closing, so every Chinese-IME candidate confirm
-    // adds a leading newline to the draft (input starts on line two).
-    // preventDefault leaves the IME's own confirm (compositionend + insertText)
-    // untouched.
-    if (composing) {
-      e.preventDefault()
-      return
-    }
+    if (composing) return
     // Menu-open Enter picks the highlight through arbitration; a no-highlight
     // menu passes down to the machine's own adjudication.
     const arbitrated = keyboard.arbitrate('enter', composing)
@@ -751,7 +742,7 @@ export function InputBar({
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
             />
-            <div ref={mirrorRef} aria-hidden className={css.mirror} data-input-mirror>{`${draft}\n`}</div>
+            <div ref={mirrorRef} aria-hidden className={css.mirror} data-input-mirror>{draft}</div>
           </div>
         </div>
         <div className={css.row}>
