@@ -15,6 +15,9 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 const TRUNCATED_MESSAGE = '<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>'
 const LOST_PREFIX_MESSAGE = '<response clipped><NOTE>The beginning of this command output was dropped by the terminal scrollback limit. The following text is the earliest retained output.</NOTE>\n'
 const SHELL_RESET_MESSAGE = 'The persistent bash shell was reset; the next bash call starts from the workspace with a fresh current directory and environment.'
+// Status trailer for a command that never reported an exit code; settled
+// commands append `[Command finished with exit code N]` instead (see renderCaptured).
+const TIMEOUT_STATUS_MARKER = '[Command timed out or OOM]'
 const TIMEOUT_CODE = 'PERSISTENT_BASH_TIMEOUT'
 // One page is enough to find a just-emitted completion marker; the full
 // scrollback is assembled only when a command settles or needs partial output.
@@ -82,7 +85,7 @@ function wrapCommand(command: string, marker: CommandMarkers): string {
 }
 
 function trimTrailingNewline(text: string): string {
-  return text.replace(/\r?\n$/, '')
+  return text.replace(/(?:\r?\n)+$/, '')
 }
 
 function commandOutput(
@@ -162,8 +165,8 @@ function renderCaptured(output: CapturedOutput, maxOutputChars: number): string 
   const withPrefix = output.incomplete && output.text.length > 0
     ? LOST_PREFIX_MESSAGE + rendered
     : rendered
-  const marker = output.exitCode !== undefined && output.exitCode !== 0
-    ? `[exit code: ${output.exitCode}]`
+  const marker = output.exitCode !== undefined
+    ? `[Command finished with exit code ${output.exitCode}]`
     : undefined
   return appendStatusMarker(withPrefix, marker)
 }
@@ -184,6 +187,36 @@ function renderShellExitStatus(
       ? `[shell exited: code ${exitCode}]`
       : '[shell exited]'
   return appendStatusMarker(content, marker)
+}
+
+/**
+ * Render the exited-session result, reset the owner's shell, and reset the
+ * message that tells the model the next call starts fresh.
+ * @param shells - the owner-scoped registry to reset.
+ * @param status - the exited session status (exit code and signal).
+ * @returns the complete model-facing result.
+ */
+async function respondToSessionExit(
+  ctx: Context,
+  shells: PersistentShells,
+  owner: Agent,
+  id: TerminalSessionId,
+  status: { exitCode: number | null; signal: NodeJS.Signals | null },
+  marker: CommandMarkers,
+  fallback: string,
+  fallbackTruncated: boolean,
+  config: ResolvedConfig,
+): Promise<string> {
+  const snapshot = retainedScrollback(ctx, owner, id)
+  await shells.reset(owner, 'persistent bash shell exited')
+  return [
+    renderShellExitStatus(
+      renderCaptured(partialOutput(snapshot, marker, fallback, fallbackTruncated), config.maxOutputChars),
+      status.exitCode,
+      status.signal,
+    ),
+    SHELL_RESET_MESSAGE,
+  ].filter(part => part.length > 0).join('\n')
 }
 
 function persistentShells(ctx: Context, config: ResolvedConfig): PersistentShells {
@@ -277,6 +310,15 @@ async function executeCommand(
   let fallbackTruncated = false
 
   while (true) {
+    // The shell may flip to exited between iterations (a fast `exit` can
+    // settle the previous send while its exit event is still in flight);
+    // re-observing status before the next send closes that gap.
+    const status = ctx.terminals.list(owner).find(session => session.sessionId === id)?.status
+    if (status?.kind === 'exited') {
+      return await respondToSessionExit(
+        ctx, shells, owner, id, status, marker, fallback, fallbackTruncated, config,
+      )
+    }
     let operation
     let result
     try {
@@ -306,7 +348,7 @@ async function executeCommand(
       return [
         // TODO: Report a timeout only; this signal does not establish an OOM.
         `Your command timed out after ${Math.round(timedOut.timeoutMs / 1000)} seconds or experienced an OOM error. Below is partial output:`,
-        partial,
+        appendStatusMarker(partial, TIMEOUT_STATUS_MARKER),
         SHELL_RESET_MESSAGE,
       ].join('\n')
     }
@@ -319,16 +361,9 @@ async function executeCommand(
       if (complete !== undefined) return renderCaptured(complete, config.maxOutputChars)
     }
     if (result.sessionStatus.kind === 'exited') {
-      const snapshot = retainedScrollback(ctx, owner, id, latest)
-      await shells.reset(owner, 'persistent bash shell exited')
-      return [
-        renderShellExitStatus(
-          renderCaptured(partialOutput(snapshot, marker, fallback, fallbackTruncated), config.maxOutputChars),
-          result.sessionStatus.exitCode,
-          result.sessionStatus.signal,
-        ),
-        SHELL_RESET_MESSAGE,
-      ].filter(part => part.length > 0).join('\n')
+      return await respondToSessionExit(
+        ctx, shells, owner, id, result.sessionStatus, marker, fallback, fallbackTruncated, config,
+      )
     }
     // The shell reads stdin again (its prompt, or a foreground child's own
     // read) without having printed the end marker — e.g. `exec`, an interrupt,
