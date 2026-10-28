@@ -33,8 +33,10 @@ on:
     branches: [main, master]
   pull_request:
   schedule:
-    # 00:17 UTC nightly = 08:17 Asia/Shanghai — off the top-of-hour cron stampede.
-    - cron: '17 0 * * *'
+    # Fork policy: weekly heartbeat (upstream runs this nightly against their own key;
+    # here it spends the fork owner's DEEPSEEK_API_KEY_EXTERNAL, so keep it 7x cheaper).
+    # 00:17 UTC Monday = 08:17 Asia/Shanghai — off the top-of-hour cron stampede.
+    - cron: '17 0 * * 1'
 
 # Keep only the newest validation in each workflow/ref, including master
 # pushes, nightly runs, and manual dispatches.
