@@ -2,7 +2,6 @@
   - button "Use actual duration": Duration
   - button "Collapse turns": Turns
   - button "Collapse calls": Calls
-  - img
   - searchbox "Search trajectory"
 - region "Trajectory timeline"
 - table:
@@ -50,4 +49,10 @@
     - tab "Result" [selected]
     - tab "Schema"
     - tab "Timing"
-  - tabpanel "Result": NAVIGATION_OK
+  - tabpanel "Result":
+    - region "Raw result":
+      - heading "Raw result" [level=3]
+      - paragraph: Raw results are only available for live tool calls
+    - region "Rendered result":
+      - heading "Rendered result" [level=3]
+      - text: NAVIGATION_OK
