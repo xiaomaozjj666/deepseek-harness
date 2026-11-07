@@ -138,8 +138,15 @@ jobs:
   # drill does not appear in PR checks. No cache steps because the VM's
   # persistent pnpm store and tool caches make them redundant (and saving here
   # would poison the hosted cache namespace with self-hosted paths).
+  #
+  # The drill is opt-in via DSH_CI_SERIAL_STANDBY: the standby pool currently
+  # has no registered runner, so an unguarded push would sit in queue for the
+  # full 24h queue limit and then take the whole run down with it (observed
+  # 2026-09-19 and 2026-10-28). Set the variable when the pool returns.
   serial-linux-selfhosted:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/master' &&
+      vars.DSH_CI_SERIAL_STANDBY == 'true'
     name: serial / linux (self-hosted standby)
     runs-on: [self-hosted, linux, x64, vm-backup]
     steps:
@@ -233,7 +240,9 @@ jobs:
   # (and saving here would poison the hosted cache namespace with self-hosted
   # paths).
   serial-windows:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/master' &&
+      vars.DSH_CI_SERIAL_STANDBY == 'true'
     name: serial / windows (self-hosted standby)
     runs-on: [self-hosted, dsh-win-ci, windows]
     timeout-minutes: 120
