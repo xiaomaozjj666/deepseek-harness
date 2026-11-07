@@ -47,3 +47,6 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+
+# tsx transform cache written to a mis-resolved path by local builds
+undefined/
