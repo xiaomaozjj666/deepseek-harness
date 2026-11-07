@@ -29,10 +29,10 @@
     "directory": "packages/experimental/forge-github"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:~",
     "@deepseek-ai/dsh-timeout": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
     "execa": "^10.0.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

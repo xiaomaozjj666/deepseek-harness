@@ -12,8 +12,8 @@ export interface WebOutputChunk {
   modules: Record<string, unknown>
   imports: string[]
   dynamicImports: string[]
-  implicitlyLoadedBefore: string[]
-  referencedFiles: string[]
+  implicitlyLoadedBefore?: string[]
+  referencedFiles?: string[]
   viteMetadata?: { importedCss: Set<string>; importedAssets: Set<string> }
 }
 
@@ -88,8 +88,8 @@ export class WebProductBundleIsolation {
         modules: { ...item.modules },
         imports: [...item.imports],
         dynamicImports: [...item.dynamicImports],
-        implicitlyLoadedBefore: [...item.implicitlyLoadedBefore],
-        referencedFiles: [...item.referencedFiles],
+        implicitlyLoadedBefore: [...(item.implicitlyLoadedBefore ?? [])],
+        referencedFiles: [...(item.referencedFiles ?? [])],
         ...(item.viteMetadata === undefined ? {} : { viteMetadata: {
           importedCss: new Set(item.viteMetadata.importedCss),
           importedAssets: new Set(item.viteMetadata.importedAssets),
@@ -152,7 +152,9 @@ export class WebProductBundleIsolation {
       for (const input of inputs) this.inputs.assertInput(input)
     }
     const checkModule = (id: string): void => {
-      if (visitedModules.has(id)) return
+      // Virtual modules (rolldown's injected runtime, helpers) carry no real
+      // file input; Vite returns no module record for them.
+      if (id.startsWith('\0')) return
       visitedModules.add(id)
       this.inputs.assertInput(id)
       const info = moduleInfo(id)
@@ -178,7 +180,7 @@ export class WebProductBundleIsolation {
       if (this.workerInputs.has(file)) checkWorker(file)
       else if (item.type === 'chunk') {
         for (const id of Object.keys(item.modules)) checkModule(id)
-        queue.push(...item.imports, ...item.dynamicImports, ...item.implicitlyLoadedBefore, ...item.referencedFiles)
+        queue.push(...item.imports, ...item.dynamicImports, ...(item.implicitlyLoadedBefore ?? []), ...(item.referencedFiles ?? []))
         queue.push(...item.viteMetadata?.importedCss ?? [], ...item.viteMetadata?.importedAssets ?? [])
       } else if (cssOwners.has(file)) {
         for (const id of cssOwners.get(file) ?? []) checkModule(id)

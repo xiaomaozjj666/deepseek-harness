@@ -35,10 +35,10 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:~",
     "@deepseek-ai/dsh-timeout": "workspace:*",
-    "zod": "4.4.3",
-    "sherpa-onnx-node": "1.13.8"
+    "@deepseek-ai/schemastery": "workspace:~",
+    "sherpa-onnx-node": "1.13.8",
+    "zod": "4.6.6"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

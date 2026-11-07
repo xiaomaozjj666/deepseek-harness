@@ -64,9 +64,9 @@
     "lib/typert.remote-client.d.ts"
   ],
   "dependencies": {
-    "zod": "4.4.3",
+    "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
-    "@deepseek-ai/dsh-brand": "workspace:*"
+    "zod": "4.6.6"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
@@ -74,11 +74,11 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-api-remotes": "workspace:*",
+    "@deepseek-ai/dsh-attachment": "workspace:*",
     "@deepseek-ai/dsh-client-connection": "workspace:*",
     "@deepseek-ai/dsh-commands": "workspace:*",
-    "@deepseek-ai/dsh-util-crypto": "workspace:*",
-    "@deepseek-ai/dsh-api-remotes": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
-    "@deepseek-ai/dsh-attachment": "workspace:*"
+    "@deepseek-ai/dsh-util-crypto": "workspace:*"
   }
 }

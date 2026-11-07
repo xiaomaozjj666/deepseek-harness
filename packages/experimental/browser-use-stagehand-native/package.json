@@ -44,11 +44,11 @@
     "@browserbasehq/stagehand": "4.1.0",
     "@deepseek-ai/dsh-experimental-browser-use-runtime": "workspace:*",
     "@deepseek-ai/dsh-mcp-client": "workspace:*",
+    "@deepseek-ai/dsh-subprocess": "workspace:*",
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
-    "zod": "4.4.3",
-    "@deepseek-ai/dsh-subprocess": "workspace:*",
-    "@puppeteer/browsers": "3.2.2"
+    "@puppeteer/browsers": "3.2.2",
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

@@ -2,6 +2,9 @@
 
 import type { Plugin } from 'vite'
 import { WebProductBundleIsolation } from '../../scripts/web-product-bundle-isolation.ts'
+// Rolldown's ModuleInfo type dropped isExternal/isIncluded, but Vite still
+// populates both on the objects it returns (see Vite's rollup-compat layer).
+import type { WebModuleInfo } from '../../scripts/web-product-bundle-isolation.ts'
 
 const DEPENDENCY_ANALYSIS_PLUGIN = 'dsh-browser-dependency-analysis'
 
@@ -58,7 +61,7 @@ export function productWebBundleIsolation(repository: string, webRoot: string): 
             name: 'dsh-worker-build-inputs',
             generateBundle: {
               order: 'post',
-              handler(_options, bundle) { inputs.workerBundle(bundle, this.getWatchFiles()) },
+              handler(_options, bundle) { inputs.workerBundle(bundle, [...this.getModuleIds()]) },
             },
           }],
         },
@@ -98,7 +101,7 @@ export function productWebBundleIsolation(repository: string, webRoot: string): 
     generateBundle: {
       order: 'post',
       handler(_options, bundle) {
-        if (!dependencyAnalysis) inputs.verify(bundle, id => this.getModuleInfo(id))
+        if (!dependencyAnalysis) inputs.verify(bundle, id => this.getModuleInfo(id) as unknown as WebModuleInfo | null)
       },
     },
   }]
