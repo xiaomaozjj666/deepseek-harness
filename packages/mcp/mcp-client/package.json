@@ -42,7 +42,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
-    "@modelcontextprotocol/client": "2.2.0"
+    "@modelcontextprotocol/client": "2.3.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -59,7 +59,7 @@
     "@deepseek-ai/dsh-tool-testkit": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@modelcontextprotocol/node": "2.0.0",
-    "@modelcontextprotocol/server": "2.2.0",
+    "@modelcontextprotocol/server": "2.3.0",
     "@modelcontextprotocol/server-everything": "^2026.8.31",
     "@modelcontextprotocol/server-filesystem": "^2026.8.31",
     "zod": "4.6.6"
