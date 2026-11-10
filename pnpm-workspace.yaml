@@ -20,6 +20,9 @@ overrides:
   # vulnerable range); force the patched 8.12.2 until their upstream ranges move.
   '@botiverse/oar>undici': '8.12.2'
   '@earendil-works/pi-coding-agent>undici': '8.12.2'
+  # stagehand 4.1.0 pins zod 4.4.3 while the workspace pins 4.6.6; two copies
+  # give the schema passed to stagehand.extract a different type identity.
+  '@browserbasehq/stagehand>zod': '4.6.6'
   '@deepseek-ai/cosmokit': 'link:vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
 

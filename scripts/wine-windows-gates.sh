@@ -36,6 +36,19 @@ wine_bin=''
 for candidate in "$(command -v wine || true)" "$(command -v wine64 || true)" /usr/lib/wine/wine64; do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then wine_bin="$candidate"; break; fi
 done
+# Debian/Ubuntu keep wineserver beside the loader instead of on PATH, so a
+# plain `wineserver` call fails even though the package is installed. Locate
+# it once and put its directory first so wineboot's wait and the cleanup trap
+# both resolve it.
+wineserver_bin=''
+for candidate in "$(command -v wineserver || true)" /usr/lib/wine/wineserver \
+  "$(dirname "${wine_bin:-/nonexistent}")/wineserver"; do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then wineserver_bin="$candidate"; break; fi
+done
+if [ -n "$wineserver_bin" ]; then
+  PATH="$(dirname "$wineserver_bin"):$PATH"
+  export PATH
+fi
 # GNU coreutils sha256sum on Linux; perl shasum ships with macOS. Both
 # accept the same "<hash>  <file>" --check input.
 checksum_tool=''
