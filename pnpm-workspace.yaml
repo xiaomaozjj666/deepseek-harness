@@ -37,6 +37,12 @@ overrides:
   # The browser-like test environment is a peer with no upper bound in
   # vitest; 21 is the first release outside the traversal advisory.
   happy-dom: '21.0.4'
+  # These three parents still declare the pre-fix major and have no newer
+  # release that widens it; take the fixed line only inside their subtree so
+  # the rest of the workspace keeps its own glob/katex/hono-server majors.
+  '@modelcontextprotocol/server-filesystem>glob': '14.0.4'
+  'mermaid>katex': '0.18.7'
+  '@modelcontextprotocol/node>@hono/node-server': '2.1.3'
   '@deepseek-ai/cosmokit': 'link:vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
 
