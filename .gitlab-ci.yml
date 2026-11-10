@@ -40,7 +40,7 @@ sdk-wheel:
     - pnpm exec tsx scripts/build-exe-for-python-sdk.ts --targets="$PKG_TARGET"
     - EXE="$PWD/dist-exe/deepseek-harness-sdk-runtime-$PLATFORM"
     - test -x "$EXE"
-    - uv run --python 3.10 --group test --project python/sdk python scripts/smoke-python-runtime.py --scenario all --exe "$EXE"
+    - uv run --python 3.11 --group test --project python/sdk python scripts/smoke-python-runtime.py --scenario all --exe "$EXE"
     - python scripts/build-python-release.py --package runtime --tag "$CI_COMMIT_TAG" --platform "$PLATFORM" --runtime-exe "$EXE" --output-dir "release/$PLATFORM"
     - python -m venv .wheel-smoke
     - .wheel-smoke/bin/python -m pip install --find-links "release/$PLATFORM" --find-links release/sdk deepseek-harness-sdk=="$DSH_WHEEL_VERSION"
@@ -138,7 +138,7 @@ runtime-windows-x64:
     - pnpm exec tsx scripts/build-exe-for-python-sdk.ts --targets=$env:PKG_TARGET
     - $exe = Join-Path $PWD "dist-exe\deepseek-harness-sdk-runtime-win-x64.exe"
     - if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Runtime executable is missing at $exe" }
-    - uv run --python 3.10 --group test --project python/sdk python scripts/smoke-python-runtime.py --scenario all --exe $exe
+    - uv run --python 3.11 --group test --project python/sdk python scripts/smoke-python-runtime.py --scenario all --exe $exe
     - .ci-python\Scripts\python.exe scripts/build-python-release.py --package runtime --tag $env:CI_COMMIT_TAG --platform $env:PLATFORM --runtime-exe $exe --output-dir "release/$env:PLATFORM"
     - python -m venv .wheel-smoke
     - .wheel-smoke\Scripts\python.exe -m pip install "release/sdk/deepseek_harness_sdk-$env:DSH_WHEEL_VERSION-py3-none-any.whl" "release/win-x64/deepseek_harness_runtime_bin-$env:DSH_WHEEL_VERSION-py3-none-win_amd64.whl"

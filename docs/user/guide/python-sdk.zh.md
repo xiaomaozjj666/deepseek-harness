@@ -6,7 +6,7 @@
 
 ## 前置条件
 
-- Python 3.10 或更高版本
+- Python 3.11 或更高版本
 - Git
 - Linux x64、Linux arm64、arm64 上的 macOS 14 或更高版本，或 Windows x64
 - DeepSeek 兼容的 API endpoint 与凭据
@@ -32,7 +32,7 @@ python -m pip install deepseek-harness-sdk
 ```powershell [Windows PowerShell]
 git clone https://github.com/deepseek-ai/deepseek-harness.git
 Set-Location deepseek-harness
-py -3.10 -m venv .venv
+py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install deepseek-harness-sdk
 ```

@@ -26,13 +26,13 @@ jobs:
   python-sdk:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    name: python 3.10 / keyless SDK
+    name: python 3.11 / keyless SDK
     steps:
       - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-python@v6.3.0
         with:
-          python-version: '3.10'
+          python-version: '3.11'
           cache: pip
 
       - name: Install uv
@@ -43,10 +43,10 @@ jobs:
           node-version: 24
 
       - name: Test production blame scoring
-        run: uv run --python 3.10 --with-requirements .github/review-ownership/requirements.txt python -m unittest discover -s .github/review-ownership -p 'test_*.py'
+        run: uv run --python 3.11 --with-requirements .github/review-ownership/requirements.txt python -m unittest discover -s .github/review-ownership -p 'test_*.py'
 
       - name: Run complete keyless Python suite
-        run: uv run --python 3.10 --group test --project python/sdk pytest
+        run: uv run --python 3.11 --group test --project python/sdk pytest
 
   # The reusable builder owns each published executable, wheel, clean-install,
   # keyless black-box, and trusted real-API path. Linux and Windows x64 block
