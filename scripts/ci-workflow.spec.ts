@@ -1122,7 +1122,7 @@ describe('Python release workflows', () => {
         release: true,
       },
     })
-    expect(pythonCompat.strategy).toMatchObject({ matrix: { python: ['3.10', '3.14'] } })
+    expect(pythonCompat.strategy).toMatchObject({ matrix: { python: ['3.11', '3.14'] } })
     const pythonCompatSteps = JSON.stringify(pythonCompat.steps)
     expect(pythonCompatSteps).toContain('dist/deepseek_harness_sdk-$VERSION-py3-none-any.whl')
     expect(pythonCompatSteps).toContain('dist/deepseek_harness_runtime_bin-$VERSION-py3-none-manylinux_2_28_x86_64.whl')
@@ -1418,7 +1418,7 @@ describe('Weighted approval workflow', () => {
     const pythonJob = workflowJob(loadWorkflow('.github/workflows/ci-python.yml'), 'python-sdk')
     expect(pythonJob.steps).toContainEqual({
       name: 'Test production blame scoring',
-      run: "uv run --python 3.10 --with-requirements .github/review-ownership/requirements.txt python -m unittest discover -s .github/review-ownership -p 'test_*.py'",
+      run: "uv run --python 3.11 --with-requirements .github/review-ownership/requirements.txt python -m unittest discover -s .github/review-ownership -p 'test_*.py'",
     })
     expect(steps.find(step => step.name === 'Install production lexer')).toMatchObject({
       if: "steps.revoke.outputs.active == 'true'",
