@@ -76,8 +76,8 @@ def test_authoring_resources_validate_installed_and_wheel_payloads(tmp_path: Pat
     root = tmp_path / target
     python = root / "primary-runtime/dependencies/python" / ("python.exe" if target == "win-x64" else "bin/python3")
     node = root / "primary-runtime/dependencies/node/bin" / ("node.exe" if target == "win-x64" else "node")
-    if invalid in ("mode", "node-mode") and target == "win-x64":
-        pytest.skip("Windows executables do not require a POSIX executable bit")
+    if invalid in ("mode", "node-mode") and (target == "win-x64" or os.name == "nt"):
+        pytest.skip("the POSIX executable bit is not representable on the target or the staging host")
     if invalid == "manifest":
         (root / "primary-runtime/runtime.json").unlink()
     elif invalid == "platform":
@@ -100,7 +100,16 @@ def test_authoring_resources_validate_installed_and_wheel_payloads(tmp_path: Pat
     archive_path = tmp_path / "payload.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         for path in root.rglob("*"):
-            archive.write(path, str(path.relative_to(root)).replace("\\", "/"))
+            arcname = str(path.relative_to(root)).replace("\\", "/")
+            if path.is_dir():
+                archive.write(path, arcname)
+                continue
+            info = zipfile.ZipInfo.from_file(path, arcname)
+            if os.name == "nt":
+                # Windows stat() has no execute bit; write the archive entry
+                # with the mode the fixture intends to stage.
+                info.external_attr = (0o100755 if path in (python, node) else 0o100644) << 16
+            archive.writestr(info, path.read_bytes())
     with zipfile.ZipFile(archive_path) as archive:
         for candidate in (root, zipfile.Path(archive)):
             if invalid is None:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[3]
 CLI = ROOT / 'apps' / 'cli' / 'lib' / 'bin.js'
 
 
-@pytest.mark.skipif(not CLI.exists(), reason='requires the built dsh profile runtime')
+# The SDK launches dsh_bin directly, and the profile runtime is a Node entry
+# point behind its POSIX launcher; NTFS cannot mark bin.js executable.
+@pytest.mark.skipif(not CLI.exists() or os.name == 'nt', reason='requires the built dsh profile runtime through its POSIX launcher')
 def test_account_provider_signout_snapshot(tmp_path: Path) -> None:
     with DeepSeekHarness(
         dsh_bin=str(CLI),

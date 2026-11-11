@@ -41,8 +41,14 @@ def validate_resources(root: Path | zipfile.Path, target: str) -> None:
         raise FileNotFoundError(f"runtime Python site-packages is missing: {packages}")
     if platform != "win32":
         for binary in (executable, node):
-            mode = (binary.root.getinfo(binary.at).external_attr >> 16
-                    if isinstance(binary, zipfile.Path) else binary.stat().st_mode)
+            if isinstance(binary, zipfile.Path):
+                mode = binary.root.getinfo(binary.at).external_attr >> 16
+            elif os.name == "nt":
+                # NTFS has no POSIX execute bit, so a directory staged on Windows
+                # cannot carry one; archive payloads still expose theirs above.
+                continue
+            else:
+                mode = binary.stat().st_mode
             if mode & stat.S_IXUSR == 0:
                 raise ValueError(f"runtime interpreter lost its executable bit: {binary}")
 

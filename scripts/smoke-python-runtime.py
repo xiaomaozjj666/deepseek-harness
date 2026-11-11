@@ -2536,8 +2536,14 @@ def minimal_snapshot_message(message: object, cwd: Path) -> dict[str, object]:
 
 def snapshot_directory_replacements(directory: Path, token: str) -> list[tuple[str, str]]:
     """Pin the allocated fixture path in plain fields and JSON-quoted context text."""
-    path = str(directory)
-    return [(json.dumps(path, ensure_ascii=False)[1:-1], token), (path, token)]
+    paths = [str(directory)]
+    # Recorded POSIX conversations keep forward slashes even when the snapshot
+    # is rewritten on Windows, where Path would have turned them into '\'.
+    forward = paths[0].replace("\\", "/")
+    if forward != paths[0]:
+        paths.append(forward)
+    return ([(json.dumps(path, ensure_ascii=False)[1:-1], token) for path in paths]
+            + [(path, token) for path in paths])
 
 
 def minimal_snapshot_text(value: object, cwd: Path) -> object:
