@@ -32,6 +32,9 @@ overrides:
   ip-address: '10.7.4'
   hono: '4.13.11'
   body-parser: '2.4.0'
+  # Both direct parents (@modelcontextprotocol/node 2.1.2 and the SDK 1.32.2)
+  # already admit the 2.x server transport; 1.19.17 is the last vulnerable 1.x.
+  '@hono/node-server': '2.1.6'
   '@deepseek-ai/cosmokit': 'link:vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
 

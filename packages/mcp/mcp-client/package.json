@@ -58,8 +58,8 @@
     "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
     "@deepseek-ai/dsh-tool-testkit": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
-    "@modelcontextprotocol/node": "2.0.0",
-    "@modelcontextprotocol/server": "2.3.0",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "@modelcontextprotocol/server-everything": "^2026.8.31",
     "@modelcontextprotocol/server-filesystem": "^2026.8.31",
     "zod": "4.6.6"
