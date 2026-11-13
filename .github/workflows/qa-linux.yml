@@ -1,0 +1,51 @@
+name: QA Linux full suite
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_TELEMETRY_DISABLED: '1'
+  NODE_OPTIONS: --max-old-space-size=8192
+
+jobs:
+  unit:
+    name: vitest shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5.0.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build native host addon
+        run: pnpm run build:native-system
+      - name: Run unit shard
+        run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=dot
+
+  passed:
+    name: QA Linux full suite
+    runs-on: ubuntu-24.04
+    needs: unit
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Require every shard to pass
+        run: |
+          test '${{ needs.unit.result }}' = success
