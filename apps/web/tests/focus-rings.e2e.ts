@@ -258,7 +258,7 @@ async function compileFixture(): Promise<{ script: string; css: string }> {
       resolveId(id) { if (id === entry) return entry },
       load(id) { if (id === entry) return code },
     }],
-    esbuild: { jsx: 'automatic', jsxDev: false },
+    oxc: { jsx: { runtime: 'automatic', development: false } },
     define: { 'process.env.NODE_ENV': JSON.stringify('production') },
     build: {
       write: false,
