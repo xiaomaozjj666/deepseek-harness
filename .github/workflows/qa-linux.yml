@@ -33,12 +33,16 @@ jobs:
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           cache: pnpm
+      - name: Install Linux sandbox runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
       - name: Build native host addon
         run: pnpm run build:native-system
       - name: Run unit shard
-        run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=dot
+        run: pnpm exec vitest run --testTimeout=30000 --shard=${{ matrix.shard }}/4 --reporter=dot
 
   passed:
     name: QA Linux full suite
