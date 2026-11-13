@@ -176,7 +176,14 @@ export class WebProductBundleIsolation {
       if (visitedOutputs.has(file)) continue
       visitedOutputs.add(file)
       const item = outputs.get(file)
-      if (item === undefined) throw new Error(`Web product isolation: referenced output ${file} is missing`)
+      if (item === undefined) {
+        // Rolldown records bare external imports as chunk imports without an
+        // output item or module record; keep the original failure reason.
+        if (/^[^./\\][^/\\]*$/.test(file) && !file.includes('?') && !file.endsWith('.html')) {
+          throw new Error(`Web product isolation: external module ${file} has no bundled input proof`)
+        }
+        throw new Error(`Web product isolation: referenced output ${file} is missing`)
+      }
       if (this.workerInputs.has(file)) checkWorker(file)
       else if (item.type === 'chunk') {
         for (const id of Object.keys(item.modules)) checkModule(id)
