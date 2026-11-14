@@ -96,7 +96,6 @@ describe('browser dependency discovery', () => {
   })
 
   it.each([
-    ['Rollup', false, false], ['Rollup', true, false], ['Rollup', true, true],
     ['Rolldown', false, false], ['Rolldown', true, false], ['Rolldown', true, true],
   ] as const)('follows shell aliases, CSS and lazy imports without writing output (%s, symlinked root: %s, retained alias: %s)', async (bundler, linked, preserveAlias) => {
     const root = fixture()
@@ -116,8 +115,7 @@ describe('browser dependency discovery', () => {
     ].join('\n'))
     const app = join(root, 'apps/web')
     write(root, 'apps/web/package.json', '{"name":"@fixture/web","type":"module","exports":{"./dist/*":"./dist/*"}}')
-    const owner = bundler === 'Rollup' ? resolve(repositoryRoot, 'apps/web/package.json')
-      : createRequire(resolve(repositoryRoot, 'package.json')).resolve('vitest/package.json')
+    const owner = createRequire(resolve(repositoryRoot, 'package.json')).resolve('vitest/package.json')
     const viteDirectory = dirname(createRequire(owner).resolve('vite/package.json'))
     const viteLink = join(app, 'node_modules/vite')
     mkdirSync(dirname(viteLink), { recursive: true })

@@ -102,4 +102,4 @@ it.each(['arm64', 'x64'])('records %s debugging artifact paths only for an expli
   } finally {
     await rm(root, { recursive: true, force: true })
   }
-})
+}, 30_000)

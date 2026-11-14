@@ -30,7 +30,7 @@ async function bundleStyle(source: { path: string } | { package: string; css: st
   const result = await build({
     ...loaded.config, configFile: false, plugins,
     root, logLevel: 'silent',
-    build: { write: false, cssMinify: false, assetsInlineLimit: 0, rollupOptions: { input } },
+    build: { write: false, cssMinify: false, assetsInlineLimit: 0, rolldownOptions: { input } },
   })
   if ('on' in result) throw new Error('Expected a completed build')
   return (Array.isArray(result) ? result : [result]).flatMap(bundle => bundle.output)

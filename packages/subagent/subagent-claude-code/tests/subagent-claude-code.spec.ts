@@ -358,9 +358,9 @@ describe('task admission and package contracts', () => {
     )
     expect(manifest.dependencies).toHaveProperty(
       '@modelcontextprotocol/sdk',
-      '^1.31.0',
+      '^1.32.2',
     )
-    expect(manifest.dependencies).toHaveProperty('zod', '4.4.3')
+    expect(manifest.dependencies).toHaveProperty('zod', '4.6.6')
     expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-subagent-codex')
 
     const sdkRoot = dirname(fileURLToPath(
