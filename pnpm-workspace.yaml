@@ -30,7 +30,9 @@ overrides:
   # registry from the installed manifests and cannot satisfy an exact pin.
   qs: '6.16.1'
   ip-address: '10.7.4'
-  hono: '4.13.11'
+  # 4.13.16 is the first release clearing the 2026-11-13 advisories; the
+  # parents' ^4 ranges admit it, so the closure stays on the patched line.
+  hono: '4.13.16'
   body-parser: '2.4.0'
   # Both direct parents (@modelcontextprotocol/node 2.1.2 and the SDK 1.32.2)
   # already admit the 2.x server transport; 1.19.17 is the last vulnerable 1.x.

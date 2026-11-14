@@ -11,7 +11,7 @@ overrides:
   '@browserbasehq/stagehand>zod': 4.6.6
   qs: 6.16.1
   ip-address: 10.7.4
-  hono: 4.13.11
+  hono: 4.13.16
   body-parser: 2.4.0
   '@hono/node-server': 2.1.6
   '@deepseek-ai/cosmokit': link:vendor/cosmokit
@@ -19221,7 +19221,7 @@ packages:
     resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: 4.13.11
+      hono: 4.13.16
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -22812,8 +22812,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  hono@4.13.11:
-    resolution: {integrity: sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg==}
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
     engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
@@ -26619,9 +26619,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@hono/node-server@2.1.6(hono@4.13.11)':
+  '@hono/node-server@2.1.6(hono@4.13.16)':
     dependencies:
-      hono: 4.13.11
+      hono: 4.13.16
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -26983,13 +26983,13 @@ snapshots:
 
   '@modelcontextprotocol/node@2.1.2(@modelcontextprotocol/server@2.4.0)':
     dependencies:
-      '@hono/node-server': 2.1.6(hono@4.13.11)
+      '@hono/node-server': 2.1.6(hono@4.13.16)
       '@modelcontextprotocol/server': 2.4.0
-      hono: 4.13.11
+      hono: 4.13.16
 
   '@modelcontextprotocol/sdk@1.32.2(supports-color@9.4.0)(zod@4.6.6)':
     dependencies:
-      '@hono/node-server': 2.1.6(hono@4.13.11)
+      '@hono/node-server': 2.1.6(hono@4.13.16)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
@@ -26999,7 +26999,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1(supports-color@9.4.0)
       express-rate-limit: 8.5.2(express@5.2.1(supports-color@9.4.0))
-      hono: 4.13.11
+      hono: 4.13.16
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -27011,7 +27011,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.2(supports-color@9.4.0)(zod@4.6.7)':
     dependencies:
-      '@hono/node-server': 2.1.6(hono@4.13.11)
+      '@hono/node-server': 2.1.6(hono@4.13.16)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
@@ -27021,7 +27021,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1(supports-color@9.4.0)
       express-rate-limit: 8.5.2(express@5.2.1(supports-color@9.4.0))
-      hono: 4.13.11
+      hono: 4.13.16
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -30240,7 +30240,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  hono@4.13.11: {}
+  hono@4.13.16: {}
 
   hookable@5.5.3: {}
 
