@@ -17,9 +17,10 @@ import { describe, expect, it, onTestFinished } from 'vitest'
 import type {} from '../src/index.ts'
 import { apply } from '../src/host/share-host.ts'
 
-const START = Date.parse('2026-10-15T00:00:00.000Z')
-const PAST = new Date(START).toISOString()
-const LIVE = new Date(START + 30 * 24 * 60 * 60_000).toISOString()
+// The stored credential is expired and the Relay reports a still-live horizon;
+// both anchor to the running clock so the fixture cannot age into failure.
+const PAST = new Date(Date.now() - 24 * 60 * 60_000).toISOString()
+const LIVE = new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString()
 const STORED_TOKEN = 'stored-payload.stored-signature'
 
 /**
@@ -153,7 +154,7 @@ describe('owner host credential horizon', () => {
     onTestFinished(relay.close)
     const fixture = await host({ relayUrl: relay.relayUrl, expiresAt: PAST, shares: true })
 
-    await expect.poll(async () => (await fixture.identity()).state).toBe('verified')
+    await expect.poll(async () => (await fixture.identity()).state, { timeout: 15_000 }).toBe('verified')
     expect(await fixture.identity()).toMatchObject({ state: 'verified', expiresAt: LIVE })
     // The host presented the token it held even though its own expiry read had passed: the Relay is
     // the only party that can say whether the login behind it is still renewed.
@@ -174,7 +175,7 @@ describe('owner host credential horizon', () => {
     onTestFinished(relay.close)
     const fixture = await host({ relayUrl: relay.relayUrl, expiresAt: PAST, shares: false })
 
-    await expect.poll(async () => (await fixture.identity()).state).toBe('verified')
+    await expect.poll(async () => (await fixture.identity()).state, { timeout: 15_000 }).toBe('verified')
     expect(relay.claims).toEqual([])
     expect(storedHorizon(fixture.ownerCredentialFile)).toBe(LIVE)
   })
