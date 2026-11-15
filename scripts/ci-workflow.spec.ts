@@ -95,6 +95,26 @@ describe('CI workflow', () => {
     expect(afterSdk).toBeLessThanOrEqual(11)
   })
 
+  it('runs the hosted Linux QA shards for master changes and pull requests', () => {
+    const qa = loadWorkflow('.github/workflows/qa-linux.yml')
+    expect(workflowEvent(qa, 'pull_request')).toMatchObject({ branches: ['master'] })
+    expect(workflowEvent(qa, 'push')).toMatchObject({ branches: ['master'] })
+    const unit = workflowJob(qa, 'unit')
+    expect(unit['runs-on']).toBe('ubuntu-24.04')
+    expect(unit.strategy).toMatchObject({
+      'fail-fast': false,
+      matrix: { shard: [1, 2, 3, 4] },
+    })
+    expect(unit.steps).toContainEqual(expect.objectContaining({
+      name: 'Prepare bubblewrap (unrestrict userns)',
+      run: 'bash scripts/prepare-ci-bubblewrap.sh',
+    }))
+    expect(unit.steps).toContainEqual(expect.objectContaining({
+      run: 'pnpm exec vitest run --testTimeout=30000 --shard=${{ matrix.shard }}/4 --reporter=dot',
+    }))
+    expect(workflowJob(qa, 'passed').needs).toBe('unit')
+  })
+
   it('keeps the union of required PR verdicts equal to the pre-split blocking set', () => {
     const verdicts = [
       ['ci.yml', 'all-checks-passed'],
