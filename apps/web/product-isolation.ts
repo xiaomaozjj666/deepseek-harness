@@ -2,9 +2,6 @@
 
 import type { Plugin } from 'vite'
 import { WebProductBundleIsolation } from '../../scripts/web-product-bundle-isolation.ts'
-// Rolldown's ModuleInfo type dropped isExternal/isIncluded, but Vite still
-// populates both on the objects it returns (see Vite's rollup-compat layer).
-import type { WebModuleInfo } from '../../scripts/web-product-bundle-isolation.ts'
 
 const DEPENDENCY_ANALYSIS_PLUGIN = 'dsh-browser-dependency-analysis'
 
@@ -101,7 +98,30 @@ export function productWebBundleIsolation(repository: string, webRoot: string): 
     generateBundle: {
       order: 'post',
       handler(_options, bundle) {
-        if (!dependencyAnalysis) inputs.verify(bundle, id => this.getModuleInfo(id) as unknown as WebModuleInfo | null)
+        if (!dependencyAnalysis) {
+          // Rolldown's ModuleInfo type dropped isExternal/isIncluded while
+          // Vite still populates both at runtime (its rollup-compat layer).
+          // Read them into an optional-field view instead of casting through
+          // `unknown`: the assertion gate forbids that escape, and the
+          // defaults below reproduce what an absent field meant before.
+          inputs.verify(bundle, (id) => {
+            const info = this.getModuleInfo(id)
+            if (info === null) return null
+            // Rolldown's ModuleInfo type omits isExternal/isIncluded while
+            // Vite still populates both at runtime (its rollup-compat layer),
+            // so narrow them with `in` instead of escaping through `unknown`
+            // (forbidden by the assertion gate). Absent fields keep their
+            // previous falsy meaning.
+            const isExternal = 'isExternal' in info && typeof info.isExternal === 'boolean' ? info.isExternal : false
+            const isIncluded = 'isIncluded' in info && typeof info.isIncluded === 'boolean' ? info.isIncluded : null
+            return {
+              importedIds: info.importedIds,
+              dynamicallyImportedIds: info.dynamicallyImportedIds,
+              isExternal,
+              isIncluded,
+            }
+          })
+        }
       },
     },
   }]
