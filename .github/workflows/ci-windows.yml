@@ -1,5 +1,10 @@
 name: CI Windows
 
+# GitHub dropped this workflow's Actions record on 2026-11-18 (state "deleted")
+# while the file stayed on master. A deleted record returns to "active" only
+# when the file changes on the default branch, so keep this file touched on
+# master rather than creating a same-named replacement.
+
 # Native Windows pull-request lanes run in their own workflow so a slow Windows
 # job does not keep the CI run in progress: GitHub re-runs failed jobs only
 # after every job of a run finishes, so each workflow can be re-run without
