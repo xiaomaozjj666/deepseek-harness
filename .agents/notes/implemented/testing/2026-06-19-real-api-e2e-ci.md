@@ -43,6 +43,21 @@ The gate is a *clean-skip nicety*, not the secret's security boundary (see § Se
 
 Because the job only runs on trusted events where the secret is expected, the preflight is an unconditional presence check: empty key → `exit 1` with a `::error::` annotation naming the secret to configure. This is the crux that makes a self-skipping suite safe to gate on. Without it, a deleted/renamed/misconfigured secret would make `test:e2e` skip every real suite and report all-green — a silent regression of the entire safety net. The guard turns "secret missing" from an invisible false pass into a visible failure. (Its correctness was verified live: the run before the secret existed failed at exactly this step.)
 
+### Provider outages are classified, not retried into red
+
+A red suite is only informative when the provider actually answered. When the endpoint refuses every call — HTTP 402 `QUOTA`/insufficient balance, 429, 5xx, or no connection at all — the failure says nothing about the commit, and the suite's `retry: 2` only repeats the same refusal. Observed live: an account-level `Insufficient Balance` turned dozens of unrelated files red as `expected '' to contain <probe>`, which reads like model-output sensitivity but is an exhausted balance.
+
+The workflow therefore probes `/v1/messages` once (one token, `deepseek-flash`) before building or testing, and classifies the response:
+
+- **200** — the provider serves calls; the suite runs and its result is the verdict, so a failed assertion stays red.
+- **402 / 429 / 5xx / no connection** — provider-or-account outage. The suite and its build are skipped, the job is green as an *outage classification*, and the step summary plus a `::warning::` annotation record the probe status/body and the exact re-run command. Green is honest here because no test ran; the run still refuses to pass silently.
+- **401 / 403** — a rejected credential is misconfiguration, not an outage, so the probe hard-fails the job.
+- **anything else** — an unexpected probe response also hard-fails, so a broken probe cannot masquerade as an outage.
+
+This workflow is not a required status check: it runs post-merge, nightly, and on trusted PRs as an observation. The classification keeps that observation trustworthy in both directions — a real regression stays red, and a provider outage stops producing a wall of empty-output failures that trains responders to ignore the workflow.
+
+The test harnesses apply the same distinction locally: when a turn ends with a structured `error` reason, `waitForIdle` rejects with the provider message/code/status instead of leaving the caller to assert against an empty assistant message.
+
 ### Secret mapping and hygiene
 
 The repo secret is named `DEEPSEEK_API_KEY_EXTERNAL`; it is mapped to the `DEEPSEEK_API_KEY` env var the adapters and tests read (`process.env.DEEPSEEK_API_KEY`). The distinct secret name documents intent (this is the *external* public-API key, not an internal-endpoint key) and lets an internal-endpoint key coexist later without collision. Hygiene choices, each defensive:

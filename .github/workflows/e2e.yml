@@ -27,6 +27,21 @@ name: E2E (real DeepSeek API)
 #
 # Note: scheduled triggers are auto-disabled after 60 days of repo inactivity;
 # push/pull_request/workflow_dispatch act as backstops.
+#
+# PROVIDER OUTAGE vs TEST VERDICT — this workflow answers two different
+# questions, and only one of them is about this repository's code:
+#   * the credential/model endpoint answers and the suite passes or fails on
+#     assertions → that is the verdict, and an assertion failure is a real red;
+#   * the endpoint refuses to serve (HTTP 402 `QUOTA`/insufficient balance,
+#     429, 5xx, or no connection at all) → every model call fails for reasons
+#     no commit can fix, and retries only multiply the same refusal. The
+#     availability probe below classifies that case, skips the suite, and
+#     reports a green run whose step summary and `::warning::` state that NO
+#     TEST VERDICT WAS REACHED plus how to re-run. Retrying an outage is not
+#     more truthful than naming it, so the run stays green-but-explicit rather
+#     than red-on-noise or silently green.
+# A rejected credential (401/403) is NOT an outage: that is a broken secret, so
+# the probe hard-fails and the job is red.
 on:
   workflow_dispatch:
   push:
@@ -105,13 +120,56 @@ jobs:
           fi
           echo "DEEPSEEK_API_KEY present."
 
+      # The suite's own retries (vitest `retry: 2`) cannot tell "the model
+      # answered and the assertion is wrong" apart from "the provider refused
+      # every call". Probe once before spending ~10 minutes of retries: an
+      # outage is then reported as an outage instead of surfacing as dozens of
+      # empty-output assertion failures. 401/403 stays a hard failure because a
+      # rejected credential is a broken secret, not a provider outage.
+      - name: Probe external API availability
+        id: probe
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
+        run: |
+          set -u
+          body="$(mktemp)"
+          status="$(curl -sS -o "$body" -w '%{http_code}' --max-time 90 \
+            -H "x-api-key: ${DEEPSEEK_API_KEY}" \
+            -H 'content-type: application/json' \
+            -H 'anthropic-version: 2023-06-01' \
+            --data '{"model":"deepseek-flash","max_tokens":1,"messages":[{"role":"user","content":[{"type":"text","text":"Reply with OK."}]}]}' \
+            'https://api.deepseek.com/anthropic/v1/messages')" || status='000'
+          reason="$(tr '\n' ' ' < "$body" | head -c 400)"
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+          case "$status" in
+            200)
+              echo "available=true" >> "$GITHUB_OUTPUT"
+              echo "External API answered HTTP 200."
+              ;;
+            401|403)
+              echo "::error::The external API rejected the credential (HTTP ${status}); fix the DEEPSEEK_API_KEY_EXTERNAL secret: ${reason}"
+              exit 1
+              ;;
+            402|429|5??|000)
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::The external API cannot serve test calls right now (HTTP ${status}): ${reason}"
+              ;;
+            *)
+              echo "::error::Unexpected availability-probe response (HTTP ${status}): ${reason}"
+              exit 1
+              ;;
+          esac
+
       # The e2e suites boot the example bins in `lib` mode (DSH_EXAMPLE_MODE=lib):
       # the built artifact under plain Node, resolving plugins through real package
       # exports — the shape a real consumer runs. That requires a prior build.
       - name: Build (lib for the e2e example bins)
+        if: steps.probe.outputs.available == 'true'
         run: ${{ github.event_name == 'pull_request' && 'pnpm run build:artifacts --profile official' || 'pnpm run build:official' }}
 
       - name: Prepare Office runtime
+        if: steps.probe.outputs.available == 'true'
         run: pnpm run prepare:primary-runtime --target linux-x64 --output .cache/e2e-office
 
       # Real-API end-to-end tests only. The keyless gates (lint/typecheck/
@@ -120,6 +178,10 @@ jobs:
       # DEEPSEEK_BASE_URL is pinned to the external API; the secret is scoped to
       # this step (and preflight) only — never exposed to checkout/setup/install.
       - name: E2E tests (real DeepSeek API)
+        id: e2e
+        # Skipped only when the probe classified a provider outage; in every
+        # other case this step runs and its result is the actual verdict.
+        if: steps.probe.outputs.available == 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
           DEEPSEEK_BASE_URL: https://api.deepseek.com/anthropic
@@ -127,3 +189,29 @@ jobs:
           DSH_E2E_MAX_WORKERS: 6
           DSH_EXAMPLE_MODE: lib
         run: pnpm run test:e2e
+
+      # Green, but explicitly NOT a verdict: keep the run from turning red on
+      # provider/account noise while refusing to let it pass silently. The
+      # summary carries the probe evidence and the exact re-run command.
+      - name: Report provider outage instead of a test verdict
+        if: steps.probe.outputs.available != 'true'
+        env:
+          PROBE_STATUS: ${{ steps.probe.outputs.status }}
+          PROBE_REASON: ${{ steps.probe.outputs.reason }}
+        run: |
+          {
+            echo '## E2E skipped: external API unavailable (no test verdict)'
+            echo ''
+            echo "Probe: HTTP ${PROBE_STATUS} — \`${PROBE_REASON}\`"
+            echo ''
+            echo 'The suite proves nothing in this state: every model call would fail for'
+            echo 'provider or account reasons that no commit can fix, and retrying a refusal'
+            echo 'only repeats it. The suite was skipped rather than run into a retry storm, so'
+            echo 'this job is green only as an outage classification — not as a verdict.'
+            echo ''
+            echo 'Re-run once the provider recovers (same commit, no code change needed):'
+            echo '```'
+            echo 'gh workflow run e2e.yml --ref master -R xiaomaozjj666/deepseek-harness'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::E2E suite skipped: external API unavailable (HTTP ${PROBE_STATUS}). Outage classification, not a test verdict; see the run summary for the re-run command."

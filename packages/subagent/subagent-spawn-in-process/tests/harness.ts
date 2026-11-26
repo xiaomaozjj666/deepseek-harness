@@ -50,4 +50,13 @@ export async function waitForIdle(ctx: Context, agent: Agent): Promise<void> {
   do {
     await agent.whenIdle()
   } while (await ctx.subagents.waitForChildren(agent))
+  // A refused model call leaves no assistant text; surface the structured
+  // provider failure instead of letting a later text assertion fail on an
+  // empty message (see the headless harness).
+  const ended = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+  if (ended?.type === 'turn/end' && ended.data.reason.kind === 'error') {
+    const failure = ended.data.reason.error
+    const status = failure.status === undefined ? '' : `, status ${failure.status}`
+    throw new Error(`real-model turn failed before any assertion: ${failure.message} (code ${failure.code}${status})`)
+  }
 }

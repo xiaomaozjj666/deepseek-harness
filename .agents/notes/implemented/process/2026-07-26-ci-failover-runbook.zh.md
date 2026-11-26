@@ -6,11 +6,11 @@ Status: implemented
 
 ## 问题
 
-[CI](../../../../.github/workflows/ci.yml) 中三个必需的 Linux 工作作业（`node 24 / static`、`node 24 / coverage`、`node 24 / snapshots and artifacts`）运行在托管的企业级 32 核池上；聚合它们的必需判定作业（`all checks passed`）运行在标准 `ubuntu-latest` 上；[原生 Windows 作业](2026-08-08-native-windows-pull-request-ci.zh.md)（位于 [CI Windows](../../../../.github/workflows/ci-windows.yml)）运行在托管的 `dsh-windows-2025-16core` 大型运行器上。当企业池发生故障——作业无限排队或企业标签消失——所有开启的拉取请求都无法合并，而"合并一个修复"这一常规恢复手段本身正被那些无法运行的必需检查死锁。**适用范围：两个独立开关，每个平台一个。**`DSH_CI_FAILOVER_LINUX` 恢复企业级 Linux 池故障（三个必需的 Linux 工作作业加 `all checks passed`、`windows checks passed` 与 `python checks passed` 判定作业）；`DSH_CI_FAILOVER_WINDOWS` 恢复托管 Windows 池故障（原生 Windows 作业）。Linux 池故障无需重定向 Windows 作业，反之亦然。[Node 兼容性作业](../../../../.github/workflows/ci.yml)也通过隔离设置跟随 Linux 开关；判定作业的 `node-24-bench`、`python-sdk` 和 `python-runtime` 依赖仍留在标准托管运行器上，CI Python 的 `python-runtime` 也是如此；若更大范围的 GitHub 托管容量故障连标准池一并击倒，这些依赖仍会阻塞要求它们的判定。因此故障需要一个任何具备仓库写权限的响应者都能在不合并任何代码的情况下触发的开关。
+[CI](../../../../.github/workflows/ci.yml) 中三个必需的 Linux 工作作业（`node 24 / static`、`node 24 / coverage`、`node 24 / snapshots and artifacts`）在开关选中企业池时运行在托管的企业级 32 核池上，否则回退到标准 `ubuntu-latest` 运行器；聚合它们的必需判定作业（`all checks passed`）运行在标准 `ubuntu-latest` 上；[原生 Windows 作业](2026-08-08-native-windows-pull-request-ci.zh.md)（位于 [CI Windows](../../../../.github/workflows/ci-windows.yml)）在开关选中时运行在托管的 `dsh-windows-2025-16core` 大型运行器上，否则回退到 `windows-latest`。当企业池发生故障——作业无限排队或企业标签消失——所有开启的拉取请求都无法合并，而"合并一个修复"这一常规恢复手段本身正被那些无法运行的必需检查死锁。**适用范围：两个独立开关，每个平台一个。**`DSH_CI_FAILOVER_LINUX` 恢复企业级 Linux 池故障（三个必需的 Linux 工作作业加 `all checks passed`、`windows checks passed` 与 `python checks passed` 判定作业）；`DSH_CI_FAILOVER_WINDOWS` 恢复托管 Windows 池故障（原生 Windows 作业）。Linux 池故障无需重定向 Windows 作业，反之亦然。[Node 兼容性作业](../../../../.github/workflows/ci.yml)也通过隔离设置跟随 Linux 开关；判定作业的 `node-24-bench`、`python-sdk` 和 `python-runtime` 依赖仍留在标准托管运行器上，CI Python 的 `python-runtime` 也是如此；若更大范围的 GitHub 托管容量故障连标准池一并击倒，这些依赖仍会阻塞要求它们的判定。因此故障需要一个任何具备仓库写权限的响应者都能在不合并任何代码的情况下触发的开关。
 
 ## 决策
 
-三个主要 Linux 作业（`node-24`、`node-24-coverage`、`node-24-consumers`）、两个 `node-compat` 矩阵条目，以及 `all-checks-passed`、`windows-checks-passed`、`python-checks-passed` 三个判定作业通过 `DSH_CI_FAILOVER_LINUX` 解析；原生 Windows 作业通过 `DSH_CI_FAILOVER_WINDOWS` 解析。一个平台的开关不会重定向另一个平台。仓库写者将变量设为 `selfhosted` 时，适用的可信作业选择 `vm-backup` 或 `dsh-win-ci`；`blacksmith` 取值按 [blacksmith 故障切换支路笔记](2026-09-09-blacksmith-failover-leg.zh.md) 路由参与切换的作业；未设置或任何其它值保留工作流定义的托管回退。Node 兼容性作业要求同仓库且非 fork 的头部以及非 Dependabot 作者，使用隔离运行时设置，并在未设置与非特殊值下保留 `ubuntu-latest` 回退；blacksmith 分支不带上述任何条件。在 `selfhosted` 取值下，Linux 故障切换会限制快照并发，并跳过托管软件包缓存恢复。三个判定作业跟随 Linux 开关，避免继续在不可用的托管池排队。每个开关都是写者可管理的仓库状态而非一次合并，因此在检查失败时仍然有效。`serial / linux (self-hosted standby)` 与 `serial / windows (self-hosted standby)` 通道在 master 推送上重新验证完整的未分片聚合流程。
+三个主要 Linux 作业（`node-24`、`node-24-coverage`、`node-24-consumers`）、两个 `node-compat` 矩阵条目，以及 `all-checks-passed`、`windows-checks-passed`、`python-checks-passed` 三个判定作业通过 `DSH_CI_FAILOVER_LINUX` 解析；原生 Windows 作业通过 `DSH_CI_FAILOVER_WINDOWS` 解析。一个平台的开关不会重定向另一个平台。仓库写者将变量设为 `selfhosted` 时，适用的可信作业选择 `vm-backup` 或 `dsh-win-ci`；`blacksmith` 取值按 [blacksmith 故障切换支路笔记](2026-09-09-blacksmith-failover-leg.zh.md) 路由参与切换的作业；未设置或任何其它值回退到标准 GitHub 托管运行器（Linux 用 `ubuntu-latest`，原生 Windows 用 `windows-latest`），这些标签始终有运行器可用——正是这条兜底让没有企业级/大型运行器标签的 fork 或仓库不会把所有拉取请求永久卡在排队中。显式取值始终优先，因此自托管与 Blacksmith 支路的优先级高于托管兜底；当自托管池本身不可用时，应清除变量，让新的运行解析回托管运行器，而不是继续指向无人服务的标签。Node 兼容性作业要求同仓库且非 fork 的头部以及非 Dependabot 作者，使用隔离运行时设置，并在未设置与非特殊值下保留 `ubuntu-latest` 回退；blacksmith 分支不带上述任何条件。在 `selfhosted` 取值下，Linux 故障切换会限制快照并发，并跳过托管软件包缓存恢复。三个判定作业跟随 Linux 开关，避免继续在不可用的托管池排队。每个开关都是写者可管理的仓库状态而非一次合并，因此在检查失败时仍然有效。`serial / linux (self-hosted standby)` 与 `serial / windows (self-hosted standby)` 通道在 master 推送上重新验证完整的未分片聚合流程。
 
 [被取代 CI 的取消策略](../../../../.github/workflows/ci.yml) 管理同一工作流/引用组内的 master 推送和手动运行，包括热备演练。master 快速更新可能让演练因反复被取消而始终无法得出结论。判断就绪状态时，使用最近一次已完成的热备结论，并核对其时间和提交；已取消或仅被调度的运行不构成就绪证据。
 
@@ -45,7 +45,7 @@ Linux 开关启用期间，容量需覆盖 master 热备、主 CI 作业，以�
 
 ### 切回
 
-删除 `DSH_CI_FAILOVER_LINUX` 或 `DSH_CI_FAILOVER_WINDOWS` 变量（或改为 `selfhosted` 与 `blacksmith` 之外的任何值），新的运行即解析回各自的托管池。设为 `blacksmith` 会让作业留在 Blacksmith，直到该值改变。若故障期间追加注册过实例，将其移除。
+删除 `DSH_CI_FAILOVER_LINUX` 或 `DSH_CI_FAILOVER_WINDOWS` 变量（或改为 `selfhosted` 与 `blacksmith` 之外的任何值），新的运行即解析回标准托管运行器（`ubuntu-latest` / `windows-latest`）。设为 `blacksmith` 会让作业留在 Blacksmith，直到该值改变。若故障期间追加注册过实例，将其移除。
 
 ### 信任边界
 

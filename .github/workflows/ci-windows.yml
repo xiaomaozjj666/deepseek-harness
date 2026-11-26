@@ -30,8 +30,19 @@ concurrency:
 jobs:
   # Native builds and process tests block pull requests independently of coverage.
   # Observational checks reuse the successful build and remain non-blocking.
-  # Dependabot PRs are excluded from the self-hosted pool and stay queued for
-  # the hosted runner.
+  # FAILOVER (Windows): each native job resolves its pool through the
+  # DSH_CI_FAILOVER_WINDOWS repository variable. Unset (or any unrecognized
+  # value) falls back to the standard GitHub-hosted `windows-latest`, so a fork
+  # or a repository without the paid `dsh-windows-2025-16core` label still gets
+  # Windows checks that run instead of jobs queued forever on a label nobody
+  # serves. 'selfhosted' selects the in-house `dsh-win-ci` pool and 'blacksmith'
+  # the per-workload Blacksmith images; an explicit value always wins, so the
+  # self-hosted/Blacksmith legs keep priority and the hosted fallback is
+  # reachable only when the switch is unset. When the in-house pool is
+  # unavailable, clear the variable instead of leaving it on a label that no
+  # runner serves (see .agents/notes/implemented/process/2026-07-26-ci-failover-runbook.md).
+  # Dependabot PRs are excluded from the self-hosted pool and land on the
+  # standard hosted runner.
   # Blacksmith uses 2 vCPU for file-serial native tests and 16 for coverage
   # and the shared build/observational workspace.
   windows-build:
@@ -41,7 +52,7 @@ jobs:
           || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
+          || 'windows-latest' }}
     name: windows node 24 / build & observational
     timeout-minutes: 60
     env:
@@ -124,7 +135,7 @@ jobs:
           || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
+          || 'windows-latest' }}
     name: windows node 24 / coverage
     timeout-minutes: 120
     env:
@@ -150,9 +161,9 @@ jobs:
         uses: actions/cache/restore@v6.1.0
         with:
           path: .coverage-times.json
-          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'hosted' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-
+            coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'hosted' }}-
       - name: Enable Developer Mode (symlink support)
         shell: pwsh
         run: >-
@@ -193,7 +204,7 @@ jobs:
         uses: actions/cache/save@v6.1.0
         with:
           path: .coverage-times.json
-          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'hosted' }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   windows-native-tests:
     if: github.event_name == 'pull_request'
@@ -202,7 +213,7 @@ jobs:
           || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
+          || 'windows-latest' }}
     name: windows node 24 / native tests
     timeout-minutes: 60
     steps:

@@ -26,12 +26,20 @@ export async function fsHarness(fsCwd: string, persona = ''): Promise<Context> {
 }
 
 export function waitForIdle(ctx: Context, agent: Agent): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const dispose = ctx.on('agent/status', ({ agent: subject, status }) => {
-      if (subject === agent && status === 'idle') {
-        dispose()
-        resolve()
+      if (subject !== agent || status !== 'idle') return
+      dispose()
+      // Report a refused model turn as itself instead of letting the callers'
+      // text assertions fail on an empty message (see the headless harness).
+      const ended = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+      if (ended?.type === 'turn/end' && ended.data.reason.kind === 'error') {
+        const failure = ended.data.reason.error
+        const status = failure.status === undefined ? '' : `, status ${failure.status}`
+        reject(new Error(`real-model turn failed before any assertion: ${failure.message} (code ${failure.code}${status})`))
+        return
       }
+      resolve()
     })
   })
 }

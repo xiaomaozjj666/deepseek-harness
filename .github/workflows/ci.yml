@@ -25,21 +25,27 @@ concurrency:
 
 jobs:
 
-  # Three enterprise jobs isolate coverage, static analysis, and the
+  # Three heavyweight jobs isolate coverage, static analysis, and the
   # build-backed consumer tail. The consumer job owns the only Linux build so
   # all three jobs enter runner allocation independently.
   #
-  # FAILOVER (Linux): each Linux enterprise job resolves its pool through the
-  # DSH_CI_FAILOVER_LINUX repository variable. Unset (normal), the expressions
-  # pick the hosted enterprise pools below. Setting the variable to
-  # 'selfhosted' (repo Settings → Actions → Variables; writer-manageable
-  # repository state — not PR-editable, no merge required) retargets all
-  # three onto the in-house
+  # FAILOVER (Linux): each Linux worker job resolves its pool through the
+  # DSH_CI_FAILOVER_LINUX repository variable. Unset (or any unrecognized
+  # value) falls back to the standard GitHub-hosted `ubuntu-latest`, so a fork
+  # or a repository without the paid enterprise label still gets checks that
+  # actually run instead of jobs queued forever on a label nobody serves.
+  # Setting the variable to 'selfhosted' (repo Settings → Actions → Variables;
+  # writer-manageable repository state — not PR-editable, no merge required)
+  # retargets the jobs onto the in-house
   # vm-backup pool and re-running the failed jobs is the entire switch —
   # see .agents/notes/implemented/process/2026-07-26-ci-failover-runbook.md.
   # Setting the variable to 'blacksmith' instead routes the same jobs onto
   # Blacksmith's hosted runners sized per workload (see
-  # .agents/notes/implemented/process/2026-09-09-blacksmith-failover-leg.md). The
+  # .agents/notes/implemented/process/2026-09-09-blacksmith-failover-leg.md).
+  # An explicit value always wins: the hosted fallback is reachable only when
+  # the switch is unset, so self-hosted/Blacksmith keep priority. When the
+  # self-hosted pool itself is unavailable, clear the variable rather than
+  # leaving it on a label that no runner serves. The
   # in-house pool's readiness is re-proven on every master push by the
   # serial-linux-selfhosted standby lane in ci-master.yml. Native Windows jobs
   # and their separate DSH_CI_FAILOVER_WINDOWS switch live in ci-windows.yml.
@@ -50,7 +56,7 @@ jobs:
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || 'ubuntu-latest' }}
     name: node 24 / static
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
@@ -117,7 +123,7 @@ jobs:
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || 'ubuntu-latest' }}
     name: node 24 / coverage
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
@@ -149,9 +155,9 @@ jobs:
         uses: actions/cache/restore@v6.1.0
         with:
           path: .coverage-times.json
-          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'hosted' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-
+            coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'hosted' }}-
 
       # Redirect the Node compile cache (enabled by pnpm and TypeScript) off
       # the root partition's /tmp before the first pnpm call in this lane.
@@ -205,7 +211,7 @@ jobs:
         uses: actions/cache/save@v6.1.0
         with:
           path: .coverage-times.json
-          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'hosted' }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   # Lint and duplication get their own lane instead of riding the artifact
   # consumers: a red lint no longer costs the snapshot and artifact consumers a
@@ -218,7 +224,7 @@ jobs:
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || 'ubuntu-latest' }}
     name: node 24 / lint
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
@@ -343,7 +349,7 @@ jobs:
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || 'ubuntu-latest' }}
     name: node 24 / snapshots and artifacts
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
@@ -565,9 +571,11 @@ jobs:
     # This bookkeeping-only verdict must not depend on custom-pool
     # provisioning — and under Linux failover it follows the same selector as
     # the worker jobs it aggregates, so a standard-hosted outage cannot strand
-    # the branch-protection verdict either. It retargets with the Linux switch
-    # (DSH_CI_FAILOVER_LINUX), not the Windows one, because it aggregates the
-    # required Linux workers and runs on the vm-backup pool. Under the
+    # the branch-protection verdict either. With the switch unset it runs on
+    # `ubuntu-latest` beside its workers, and with the switch set it retargets
+    # with the Linux switch (DSH_CI_FAILOVER_LINUX), not the Windows one,
+    # because it aggregates the required Linux workers and runs on the
+    # vm-backup pool. Under the
     # 'blacksmith' value the verdict shares Blacksmith's pool with its workers
     # through the same selector, so a Blacksmith outage strands both together —
     # the accepted consequence of the explicit opt-in switch.
