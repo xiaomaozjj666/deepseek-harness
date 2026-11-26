@@ -19,6 +19,24 @@ import {
 const roots: string[] = []
 const repositoryRoot = resolve(import.meta.dirname, '..')
 
+// File symlinks need Developer Mode or elevation on Windows, so a default Windows
+// checkout cannot build the escape fixture; directory junctions cover the rest.
+function supportsFileSymlinks(): boolean {
+  if (process.platform !== 'win32') return true
+  const probe = mkdtempSync(join(tmpdir(), 'dsh-file-symlink-'))
+  try {
+    writeFileSync(join(probe, 'target'), '')
+    symlinkSync(join(probe, 'target'), join(probe, 'link'))
+    return true
+  } catch {
+    return false
+  } finally {
+    rmSync(probe, { recursive: true, force: true })
+  }
+}
+
+const fileSymlinksSupported = supportsFileSymlinks()
+
 function unexpectedWebsiteMarkdown(files: readonly string[]): string[] {
   return files.filter(file => file.endsWith('.md') && file !== 'website/AGENTS.md').sort()
 }
@@ -150,7 +168,7 @@ describe('publishableImage', () => {
     expect(publishableImage(join(root, 'packages/logo.svg'), realpathSync(root))).toBe(real)
   })
 
-  it('refuses a target whose real path escapes the repository', () => {
+  it.skipIf(!fileSymlinksSupported)('refuses a target whose real path escapes the repository', () => {
     // Publication copies the bytes onto the site, so a reference reaching a
     // build-machine file must not be treated as an image the repository owns.
     const { root } = fixture()

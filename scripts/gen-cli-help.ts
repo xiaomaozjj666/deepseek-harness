@@ -18,6 +18,10 @@ const root = resolve(import.meta.dirname, '..')
 const paths = translationPairPaths('docs/cli-help.md')
 const execFileAsync = promisify(execFile)
 
+// A hung boot must fail the gate, but a cold Windows start through tsx can take
+// close to a minute per invocation, so the guard has to allow a slow platform.
+const HELP_TIMEOUT_MS = 180_000
+
 /** Complete help text and the immediate subcommands it advertises. */
 export interface CliHelp {
   /** Complete help text with LF line endings. */
@@ -194,7 +198,7 @@ async function collectHelp(): Promise<HelpPage[]> {
     const help = execFileAsync(process.execPath, [
       '--import', 'tsx/esm', 'apps/cli/src/bin.ts', ...args, '--help',
     ], {
-      cwd: root, env: environment, encoding: 'utf8', timeout: 30_000,
+      cwd: root, env: environment, encoding: 'utf8', timeout: HELP_TIMEOUT_MS,
       killSignal: 'SIGKILL', maxBuffer: 2 * 1024 * 1024,
     })
     // Killing directly, not through execFile's signal option, settles the read only after the child closes.
