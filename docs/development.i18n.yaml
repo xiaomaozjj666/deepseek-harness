@@ -47,3 +47,12 @@
 /development-guide/contributor-reference/documenting-types-verbatim-ts-type-equiv:
   en: 9d578b6797be921b
   zh: 823cbfcfd9a75c17
+/development-guide/contributor-reference/fork-upstream-sync:
+  en: cf584ccda8ead0c2
+  zh: 7384bd475ec6efba
+/development-guide/contributor-reference/fork-upstream-sync/rebase-the-fork-onto-upstream:
+  en: aaff228bc7856e72
+  zh: 0f89f941a252834d
+/development-guide/contributor-reference/fork-upstream-sync/pick-a-single-upstream-patch:
+  en: 828269591e11f595
+  zh: f363ac36c7f31e62

@@ -217,3 +217,49 @@ The [subsystems](subsystems/README.md) pages paste source-equivalent declaration
 ```
 
 `pnpm run verify-type-equiv` (part of `doc-sync`) then extracts that symbol's declaration and attached JSDoc from source via the TypeScript parser and asserts the block matches both. For a class whose implementation bodies do not belong in the catalog, use ` ```ts public-api ` and set `"projection": "public-api"`; the checked projection retains the public fields, constructor, accessors, methods, and original class/member JSDoc while omitting bodies and private or protected members. Comparison ignores whitespace and non-JSDoc comments but requires every original JSDoc comment, including member documentation, so readers see the source contract beside the exact type definition. The gate enforces a 1:1 correspondence by document, symbol, and projection between primary blocks and manifest entries; a paired `.zh.md` block reuses its unsuffixed sibling's entry only when the whole tracked fence sequence is byte-identical and ordered identically. `doc-typecheck` applies the same derivative rule to compilable fences, while skipping both source-equivalence fence kinds from compilation and its opt-out ratio. When you change a documented declaration or its JSDoc, the gate fails until you update the paste; when you add or remove a primary block, update the manifest in the same change.
+
+### Fork upstream sync
+
+This repository is a personal fork of [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness). `origin` is the fork and stays the push target; register the upstream repository once as a second remote so the common base is always available:
+
+```sh
+git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+git fetch upstream --no-tags
+```
+
+Fetch before every sync so `upstream/master` is current.
+
+#### Rebase the fork onto upstream
+
+Replay the fork's local commits on top of a linear upstream history:
+
+```sh
+git switch master
+git rebase upstream/master
+# resolve conflicts, then install and verify
+pnpm install
+pnpm run build
+git log --oneline upstream/master..HEAD
+git push --force-with-lease origin master
+```
+
+- Resolve conflicts by keeping the upstream structure and re-applying the fork's change on top; do not merge upstream into `master` just to avoid a conflict.
+- `pnpm install` follows any lockfile change, and `pnpm run build` is the complete verification the CI build lanes run. `pnpm run check:all` additionally runs the comprehensive local gate set.
+- `--force-with-lease` replaces `--force`: it refuses the push if `origin/master` moved since the fetch.
+- `git log --oneline upstream/master..HEAD` confirms exactly which local patches the rebase carried.
+
+#### Pick a single upstream patch
+
+When only one upstream fix is needed, cherry-pick it instead of rebasing the whole fork:
+
+```sh
+git log upstream/master --oneline
+git cherry-pick <commit>
+# resolve conflicts, then install and verify
+pnpm install
+pnpm run build
+git push origin master
+```
+
+- Cherry-pick the upstream commit itself rather than a hand-rewritten copy, and keep local-only commits (branding, fork configuration, documentation) separate so the next rebase can replay them cleanly.
+- Record why the fork carries a cherry-pick in its commit message, and drop the commit at the next rebase once upstream contains the change.

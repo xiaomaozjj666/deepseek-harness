@@ -224,3 +224,49 @@ Web 命令后面的参数会传给 `dsh web`，例如 `pnpm run dev:web --no-ope
 ```
 
 `pnpm run verify-type-equiv`（`doc-sync` 的一环）随后通过 TypeScript 解析器从源码提取该符号的声明及其附带的 JSDoc，并断言代码块同时匹配两者。对于不应把实现体写进目录的类，请使用 ` ```ts public-api ` 并设置 `"projection": "public-api"`；门禁检查的投影会保留公共字段、构造函数、访问器、方法以及类和成员的原始 JSDoc，同时省略实现体和私有或受保护成员。比对会忽略空白和非 JSDoc 注释，但要求保留每条原始 JSDoc（包括成员文档），让读者同时看到源码约定和确切类型定义。该门禁按文档、符号和投影，在主块与 manifest 条目之间强制 1:1 对应；只有当配对 `.zh.md` 块的完整受跟踪围栏序列与其无后缀兄弟文件按字节一致且顺序相同时，才会复用后者的条目。`doc-typecheck` 对可编译围栏应用同一派生规则，同时跳过两种源码等价围栏的编译，并将其排除在 opt-out 比例的计算之外。当你改动一个已记录的类型声明或其 JSDoc 时，门禁会失败直到你更新粘贴内容；当你增删一个主块时，请在同一个变更里更新 manifest。
+
+### Fork 上游同步
+
+本仓库是 [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) 的个人 fork。`origin` 指向本 fork，也是推送目标；请把上游仓库注册为第二个 remote，确保公共基线始终可用：
+
+```sh
+git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+git fetch upstream --no-tags
+```
+
+每次同步前先 fetch，保证 `upstream/master` 是最新的。
+
+#### 将 fork rebase 到上游
+
+把本 fork 的本地提交重放到线性的上游历史之上：
+
+```sh
+git switch master
+git rebase upstream/master
+# resolve conflicts, then install and verify
+pnpm install
+pnpm run build
+git log --oneline upstream/master..HEAD
+git push --force-with-lease origin master
+```
+
+- 冲突处理时保留上游结构，并在其上重新应用本 fork 的改动；不要为了避开冲突而把上游 merge 进 `master`。
+- `pnpm install` 用于跟上 lockfile 变化，`pnpm run build` 是 CI 构建 lane 执行的完整验证；`pnpm run check:all` 还会跑一遍全面的本地门禁集。
+- 用 `--force-with-lease` 而不是 `--force`：如果 fetch 之后 `origin/master` 又有新提交，它会拒绝推送。
+- `git log --oneline upstream/master..HEAD` 可以确认这次 rebase 究竟带上了哪些本地补丁。
+
+#### 拣选单个上游补丁
+
+只需要某一个上游修复时，用 cherry-pick 代替整仓 rebase：
+
+```sh
+git log upstream/master --oneline
+git cherry-pick <commit>
+# resolve conflicts, then install and verify
+pnpm install
+pnpm run build
+git push origin master
+```
+
+- 直接 cherry-pick 上游提交本身，而不是手抄一份；并让仅本 fork 的提交（品牌、fork 配置、文档）保持独立，方便下一次 rebase 干净地重放。
+- 在提交信息里写清为什么要带这个 cherry-pick；下次 rebase 时如果上游已包含该改动，就把它丢掉。
