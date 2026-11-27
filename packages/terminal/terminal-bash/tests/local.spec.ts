@@ -383,6 +383,11 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
       timeoutMs: 8_000,
     }, 'pwsh')
     const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
+    // Wait for the bootstrap prompt before the first send: a send issued while
+    // the shell is still starting settles on silence, and its viewport then
+    // stops before the command's reply.
+    await expect.poll(() => ctx.terminals.read(agent, created.sessionId, { offset: 0, count: 100 }).text,
+      { timeout: 8_000 }).toContain('dsh> ')
     // The bootstrap itself must have pinned both encodings: the session byte
     // decode is UTF-8, so an un-pinned console writing its host code page
     // garbles every non-ASCII byte that follows.

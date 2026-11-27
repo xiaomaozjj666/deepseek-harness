@@ -227,7 +227,20 @@ export default defineConfig({
   },
   worker: {
     // The preview worker rides dist/preview/ with the rest of that surface.
-    rollupOptions: { output: { entryFileNames: 'preview/[name]-[hash].js' } },
+    rollupOptions: {
+      output: {
+        entryFileNames: 'preview/[name]-[hash].js',
+        // zod v4's core/util cycle breaks when Rollup splits it across the
+        // worker's lazy chunks: a plugin chunk read `globalConfig` through a
+        // live binding while the chunk that owns it had not initialized, and
+        // the packed preview boot failed with `Cannot access 'globalConfig'
+        // before initialization` instead of activating its plugins. One zod
+        // chunk initializes before every lazy importer.
+        manualChunks(id: string): string | undefined {
+          return npmPackageOf(id) === 'zod' ? 'zod' : undefined
+        },
+      },
+    },
   },
   resolve: {
     // One instance per shared npm identity: a bare specifier otherwise resolves
