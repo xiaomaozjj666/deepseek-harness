@@ -8,7 +8,10 @@ name: CI
 on:
   pull_request:
   # Master HEAD gets the same verdicts as a pull request: a fix is only proven
-  # on the branch it lands on, not on the probe branch it was developed on.
+  # on the branch it lands on, not on the probe branch it was developed on. The
+  # lanes keep their pull-request-only predicates where they protect the
+  # self-hosted pool (fork and dependabot checks), and a push has no pull
+  # request to satisfy those, so it lands on the hosted runner.
   push:
     branches:
       - master
@@ -55,7 +58,6 @@ jobs:
   # serial-linux-selfhosted standby lane in ci-master.yml. Native Windows jobs
   # and their separate DSH_CI_FAILOVER_WINDOWS switch live in ci-windows.yml.
   node-24:
-    if: github.event_name == 'pull_request'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-8vcpu-ubuntu-2404'
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
@@ -117,12 +119,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run static gates
+        # A pull request compares against its base commit; a master push
+        # compares against the commit it replaced, so the archive gate keeps a
+        # trusted base on both events.
         env:
-          DSH_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          DSH_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: pnpm run check:ci:static
 
   node-24-coverage:
-    if: github.event_name == 'pull_request'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
@@ -223,7 +227,6 @@ jobs:
   # full rerun. The lane compiles package declarations because oxlint's
   # type-aware rules read them.
   node-24-lint:
-    if: github.event_name == 'pull_request'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-8vcpu-ubuntu-2404'
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
@@ -284,7 +287,6 @@ jobs:
         run: pnpm run check:ci:lint:contracts-ready
 
   node-24-bench:
-    if: github.event_name == 'pull_request'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404'
           || 'ubuntu-24.04' }}
@@ -348,7 +350,6 @@ jobs:
           retention-days: 7
 
   node-24-consumers:
-    if: github.event_name == 'pull_request'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
@@ -475,7 +476,6 @@ jobs:
 
 
   node-compat:
-    if: github.event_name == 'pull_request'
     # Under the selfhosted leg this job admits only repository-owned PR code
     # to the persistent shared VM; the blacksmith branch targets ephemeral
     # runners and carries none of those predicates.
@@ -591,7 +591,7 @@ jobs:
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'ubuntu-latest' }}
     needs: [node-24, node-24-coverage, node-24-lint, node-24-bench, node-24-consumers, node-compat]
-    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    if: ${{ !cancelled() }}
     steps:
       - name: Fail if any needed job did not succeed
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
