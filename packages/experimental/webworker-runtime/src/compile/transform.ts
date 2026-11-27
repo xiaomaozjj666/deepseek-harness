@@ -57,8 +57,39 @@ interface Edit {
 /** One binding to publish on `exports`. */
 interface Binding {
   readonly exported: string
-  readonly local: string
+  /** Expression the published getter reads: a local name or a live import access. */
+  readonly expression: string
 }
+
+/**
+ * Child fields that hold a name or a label rather than a reference, so a live
+ * import access must never replace them. Indexed on the parent node type
+ * because the parser attaches no parent links.
+ */
+const SKIPPED_PROPERTY = new Set(['property'])
+const SKIPPED_KEY = new Set(['key'])
+const SKIPPED_LABEL = new Set(['label'])
+
+/** @returns Fields of a node that are names, not references, or undefined. */
+function skippedChildren(node: Node): ReadonlySet<string> | undefined {
+  switch (node.type) {
+    case 'MemberExpression':
+      return node.computed === true ? undefined : SKIPPED_PROPERTY
+    case 'Property':
+    case 'MethodDefinition':
+    case 'PropertyDefinition':
+      return node.computed === true ? undefined : SKIPPED_KEY
+    case 'LabeledStatement':
+    case 'BreakStatement':
+    case 'ContinueStatement':
+      return SKIPPED_LABEL
+    default:
+      return undefined
+  }
+}
+
+/** How an identifier occurrence binds a name. */
+type NameRole = 'reference' | 'binding' | 'assigned' | 'ignore'
 
 class Transformer {
   private readonly edits: Edit[] = []
@@ -71,6 +102,12 @@ class Transformer {
   private readonly moduleRequests = new Set<string>()
   private readonly metaResolveRequests = new Set<string>()
   private readonly createRequireBindings = new Set<string>()
+  /** Named imports lowered to a live property access, by local name. */
+  private readonly liveImports = new Map<string, string>()
+  /** The held module temporary of each import declaration, by its start offset. */
+  private readonly importHeld = new Map<number, string>()
+  private readonly declaredNames = new Set<string>()
+  private readonly assignedNames = new Set<string>()
 
   constructor(source: string, private readonly path: string) {
     // A `#!` line is only legal at offset zero, and the prologue takes that spot;
@@ -162,7 +199,7 @@ class Transformer {
       this.replace(node.start, node.end, `${request};`)
       return
     }
-    const held = this.moduleTemp()
+    const held = this.importHeld.get(node.start) ?? this.moduleTemp()
     const lines = [`const ${held}=${request};`]
     for (const specifier of specifiers) {
       const local = (specifier.local as Node).name as string
@@ -176,9 +213,137 @@ class Transformer {
       }
       const imported = specifier.imported as Node
       const name = imported.type === 'Identifier' ? imported.name as string : imported.value as string
-      lines.push(`const ${local}=${held}[${JSON.stringify(name)}];`)
+      const access = `${held}[${JSON.stringify(name)}]`
+      // A live import reads through the module object at every use, so a cycle
+      // whose other side has not initialized the binding yet reads it later
+      // instead of throwing the way an eager snapshot does at import time.
+      if (this.liveImports.has(local)) continue
+      lines.push(`const ${local}=${access};`)
     }
     this.replace(node.start, node.end, lines.join(''))
+  }
+
+  /**
+   * Index the module's names, then decide each named import's lowering.
+   *
+   * Both steps run before any reference is visited: a reference can precede
+   * its import statement in source order (a hoisted function body reads it),
+   * and the rewrite must reach that occurrence too.
+   */
+  private indexModule(program: Node): void {
+    this.indexNames(program, 'reference')
+    for (const statement of program.body as Node[]) {
+      if (statement.type !== 'ImportDeclaration') continue
+      const specifiers = statement.specifiers as Node[]
+      if (specifiers.length === 0) continue
+      const held = this.moduleTemp()
+      this.importHeld.set(statement.start, held)
+      for (const specifier of specifiers) {
+        if (specifier.type !== 'ImportSpecifier') continue
+        const local = (specifier.local as Node).name as string
+        // A shadowing declaration or a written name would make the access see
+        // something the snapshot did not, and a `createRequire` binding stays a
+        // value because request indexing recognizes its calls by name.
+        if (this.declaredNames.has(local) || this.assignedNames.has(local)) continue
+        if (this.createRequireBindings.has(local)) continue
+        const imported = specifier.imported as Node
+        const name = imported.type === 'Identifier' ? imported.name as string : String(imported.value)
+        this.liveImports.set(local, `${held}[${JSON.stringify(name)}]`)
+      }
+    }
+  }
+
+  /**
+   * Record every name the module binds and every name it assigns, wherever the
+   * declaration sits: a nested scope reusing an import's name rules the live
+   * rewrite out for that import, so one walk without scope tracking is enough.
+   */
+  private indexNames(node: unknown, role: NameRole): void {
+    if (node === null || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const child of node) this.indexNames(child, role)
+      return
+    }
+    const record = node as Node
+    if (typeof record.type !== 'string') return
+    switch (record.type) {
+      case 'Identifier':
+        if (role === 'binding') this.declaredNames.add(record.name as string)
+        if (role === 'assigned') this.assignedNames.add(record.name as string)
+        return
+      case 'VariableDeclarator':
+        this.indexNames(record.id, 'binding')
+        this.indexNames(record.init, 'reference')
+        return
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        this.indexNames(record.id, 'binding')
+        this.indexNames(record.params, 'binding')
+        this.indexNames(record.body, 'reference')
+        return
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        this.indexNames(record.id, 'binding')
+        this.indexNames(record.body, 'reference')
+        return
+      case 'CatchClause':
+        this.indexNames(record.param, 'binding')
+        this.indexNames(record.body, 'reference')
+        return
+      case 'ObjectPattern':
+        for (const property of record.properties as Node[]) {
+          if (property.type === 'RestElement') {
+            this.indexNames(property.argument, 'binding')
+            continue
+          }
+          this.indexNames(property.key, property.computed === true ? 'reference' : 'ignore')
+          this.indexNames(property.value, 'binding')
+        }
+        return
+      case 'ArrayPattern':
+        for (const element of record.elements as Array<Node | null>) this.indexNames(element, 'binding')
+        return
+      case 'AssignmentPattern':
+        this.indexNames(record.left, 'binding')
+        this.indexNames(record.right, 'reference')
+        return
+      case 'RestElement':
+        this.indexNames(record.argument, 'binding')
+        return
+      case 'AssignmentExpression':
+        this.indexNames(record.left, 'assigned')
+        this.indexNames(record.right, 'reference')
+        return
+      case 'UpdateExpression':
+        this.indexNames(record.argument, 'assigned')
+        return
+      case 'ForInStatement':
+      case 'ForOfStatement': {
+        const left = record.left as Node
+        this.indexNames(left, left.type === 'VariableDeclaration' ? 'reference' : 'assigned')
+        this.indexNames(record.right, 'reference')
+        this.indexNames(record.body, 'reference')
+        return
+      }
+      case 'MemberExpression':
+        this.indexNames(record.object, 'reference')
+        if (record.computed === true) this.indexNames(record.property, 'reference')
+        return
+      case 'Property':
+        if (record.computed === true) this.indexNames(record.key, 'reference')
+        this.indexNames(record.value, role === 'binding' ? 'binding' : 'reference')
+        return
+      case 'LabeledStatement':
+        this.indexNames(record.body, 'reference')
+        return
+      default:
+        break
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (key === 'type' || key === 'start' || key === 'end') continue
+      this.indexNames(value, 'reference')
+    }
   }
 
   private exportNamed(node: Node): void {
@@ -190,8 +355,8 @@ class Transformer {
     if (declaration !== null) {
       // `export const x = 1` keeps its declaration; only the keyword goes.
       this.replace(node.start, declaration.start, '')
-      for (const { exported, local } of declaredBindings(declaration, detail => this.fail(detail, declaration.start))) {
-        this.bindings.push({ exported, local })
+      for (const binding of declaredBindings(declaration, detail => this.fail(detail, declaration.start))) {
+        this.bindings.push(binding)
       }
       return
     }
@@ -209,7 +374,11 @@ class Transformer {
     }
     // A bare `export {}` is a module marker with nothing to publish.
     for (const specifier of specifiers) {
-      this.bindings.push({ exported: nameOf(specifier.exported as Node), local: nameOf(specifier.local as Node) })
+      const local = nameOf(specifier.local as Node)
+      this.bindings.push({
+        exported: nameOf(specifier.exported as Node),
+        expression: this.liveImports.get(local) ?? local,
+      })
     }
     this.replace(node.start, node.end, '')
   }
@@ -330,6 +499,21 @@ class Transformer {
     if (typeof record.type !== 'string') return
     let next = context
     switch (record.type) {
+      case 'Identifier':
+        this.importReference(record)
+        return
+      case 'Property':
+        // `{a}` inside an object literal is one key and one reference sharing a
+        // range; a live import has to spell both out.
+        if (record.shorthand === true && record.computed !== true) {
+          const value = record.value as Node
+          const access = value.type === 'Identifier' ? this.liveImports.get(value.name as string) : undefined
+          if (access !== undefined) {
+            this.replace(record.start, record.end, `${value.name as string}: ${access}`)
+            return
+          }
+        }
+        break
       case 'ImportDeclaration': this.importDeclaration(record); break
       case 'ExportNamedDeclaration': this.exportNamed(record); break
       case 'ExportDefaultDeclaration': this.exportDefault(record); break
@@ -422,10 +606,18 @@ class Transformer {
       default: break
     }
     if (record.type === 'ExpressionStatement') next = { ...next, statement: record }
+    const skipped = skippedChildren(record)
     for (const [key, value] of Object.entries(record)) {
       if (key === 'type' || key === 'start' || key === 'end') continue
+      if (skipped !== undefined && skipped.has(key)) continue
       this.visit(value, next)
     }
+  }
+
+  /** Rewrite one identifier that reads a live import into its property access. */
+  private importReference(node: Node): void {
+    const access = this.liveImports.get(node.name as string)
+    if (access !== undefined) this.replace(node.start, node.end, access)
   }
 
   private isCreateRequireCall(node: Node): boolean {
@@ -480,6 +672,7 @@ class Transformer {
       this.fail(`parse failed: ${(reason as Error).message}`, 0)
     }
     this.indexCreateRequireImports(program)
+    this.indexModule(program)
     this.visit(program, { asyncGenerator: false, functionDepth: 0, moduleScope: true })
     if (this.edits.length === 0 && !this.moduleSyntax) return this.source
 
@@ -489,8 +682,8 @@ class Transformer {
     for (const [name, source] of Object.entries(HELPER_SOURCE)) {
       if (this.helpers.has(name)) prologue.push(source)
     }
-    for (const { exported, local } of this.bindings) {
-      prologue.push(`__dsh$def(exports,${JSON.stringify(exported)},()=>${local});`)
+    for (const { exported, expression } of this.bindings) {
+      prologue.push(`__dsh$def(exports,${JSON.stringify(exported)},()=>${expression});`)
     }
 
     const sorted = [...this.edits].sort((left, right) => left.start - right.start || left.end - right.end)
@@ -527,14 +720,14 @@ function declaredBindings(declaration: Node, fail: (detail: string) => never): B
     const id = declaration.id as Node | null
     if (id === null) fail('an exported declaration must be named')
     const name = id.name as string
-    return [{ exported: name, local: name }]
+    return [{ exported: name, expression: name }]
   }
   if (declaration.type !== 'VariableDeclaration') fail(`unsupported exported declaration ${declaration.type}`)
   const bindings: Binding[] = []
   const collect = (pattern: Node): void => {
     switch (pattern.type) {
       case 'Identifier':
-        bindings.push({ exported: pattern.name as string, local: pattern.name as string })
+        bindings.push({ exported: pattern.name as string, expression: pattern.name as string })
         return
       case 'ObjectPattern':
         for (const property of pattern.properties as Node[]) {

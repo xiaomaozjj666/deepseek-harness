@@ -160,8 +160,6 @@ class LocalSendOperation implements TerminalSendOperation {
   private readonly promise: PromiseWithResolvers<TerminalSendResult>
   private finished = false
   private cancellationRequested = false
-  private initialForegroundLeftWait: boolean
-  private initialForegroundPgid: number | undefined
 
   constructor(
     maxBytes: number,
@@ -170,7 +168,6 @@ class LocalSendOperation implements TerminalSendOperation {
   ) {
     this.output = new BoundedTextBuffer(maxBytes)
     this.promise = Promise.withResolvers<TerminalSendResult>()
-    this.initialForegroundLeftWait = true
   }
 
   get done(): Promise<TerminalSendResult> {
@@ -209,20 +206,6 @@ class LocalSendOperation implements TerminalSendOperation {
 
   readOutput(): TerminalSendRead {
     return this.output.consume()
-  }
-
-  setInitialForeground(foreground: SubprocessTerminalForeground | undefined): void {
-    this.initialForegroundPgid = foreground?.processGroupId
-    this.initialForegroundLeftWait = foreground?.inputWaiting !== true
-  }
-
-  acceptsStdinWait(pgid: number, waiting: boolean): boolean {
-    // The same group may still expose the wait that existed before terminal.write.
-    // Observe every poll so a departure before the exact-settlement threshold
-    // still makes a later return to that wait post-write evidence.
-    if (pgid !== this.initialForegroundPgid) return waiting
-    if (!waiting) this.initialForegroundLeftWait = true
-    return waiting && this.initialForegroundLeftWait
   }
 
   cancel(): boolean {
@@ -363,14 +346,13 @@ export class LocalPtySession implements TerminalBackendSession {
   }
 
   private async beginSend(operation: LocalSendOperation, request: TerminalSendRequest): Promise<void> {
-    let foreground: SubprocessTerminalForeground | undefined
     try {
       if (this.protocolWorkPending()) await this.drainTerminalProtocol()
       const emulatorWrites = this.emulatorWrites
       const responseWrites = this.responseWrites
-      foreground = await this.terminal.inspectForeground()
+      await this.terminal.inspectForeground()
       if (this.protocolStateChanged(emulatorWrites, responseWrites)) {
-        foreground = await this.inspectForegroundAfterProtocol()
+        await this.inspectForegroundAfterProtocol()
       }
     } catch (error: unknown) {
       if (this.protocolWorkPending()) await this.drainTerminalProtocol()
@@ -387,7 +369,6 @@ export class LocalPtySession implements TerminalBackendSession {
     }
     try {
       if (this.active !== operation || this.closing || this.interrupting === operation) return
-      operation.setInitialForeground(foreground)
       const input = `${request.text}${request.submit ? '\r' : ''}`
       if (input.length > 0 && !operation.cancelRequested) {
         this.resetReadinessEvidence()
@@ -573,9 +554,18 @@ export class LocalPtySession implements TerminalBackendSession {
       }
       const elapsed = Date.now() - operation.startedAt
       const startupHasOutput = !this.initializing || !this.scrollback.isEmpty
-      const acceptsStdinWait = startupHasOutput && foreground !== undefined
-        && operation.acceptsStdinWait(foreground.processGroupId, foreground.inputWaiting)
-      if (elapsed >= this.config.exactProbeAfterMs && acceptsStdinWait) {
+      // Only a foreground child that reads stdin proves the line we wrote ran:
+      // the shell handed the terminal over, so its completion is the child's own
+      // wait. A wait inside the shell's own group proves nothing — line editors
+      // (PSReadLine, readline) enter and leave that wait while they echo and
+      // repaint the line just written, and settling there truncated the viewport
+      // mid-echo and dropped the command's output. Shell completion stays the
+      // prompt marker's job, and the silence tier bounds a shell that never
+      // prints one. Until a prompt has named the shell's group, a wait is never
+      // evidence.
+      const childStdinWait = startupHasOutput && foreground !== undefined && foreground.inputWaiting
+        && this.shellPgid !== undefined && foreground.processGroupId !== this.shellPgid
+      if (elapsed >= this.config.exactProbeAfterMs && childStdinWait) {
         this.settleActive('stdin_read')
         return
       }

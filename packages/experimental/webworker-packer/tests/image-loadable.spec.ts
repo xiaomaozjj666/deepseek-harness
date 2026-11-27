@@ -27,6 +27,7 @@ import {
   setActiveModuleLoader, WorkerModuleLoader,
 } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/module-system/module-loader.ts'
 import { inflateImage } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/storage/image-gzip.ts'
+import { lowerModuleSource } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/compile/transform.ts'
 import { loadVfsImage } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/storage/memory.ts'
 import { setActiveVfs } from '@deepseek-ai/dsh-experimental-webworker-runtime/src/storage/active.ts'
 import { indexWorkspacePackages, previewFixtures } from '../src/repository.ts'
@@ -221,6 +222,38 @@ const archive = async (): Promise<Uint8Array> =>
     const required = loader.requireFrom(`${DEFAULT_ROOT}/workspace`)(SUBJECT) as Record<string, unknown>
     expect(typeof required.timeoutOf).toBe('function')
     expect(loader.usage().modules).toBeGreaterThan(0)
+  })
+
+  it('boots a cyclic pair whose read happens while the cycle unwinds', async () => {
+    // The shape zod v4's core/util pair has: core imports a function from util,
+    // util imports a `const` from core and reads it only inside functions. An
+    // import snapshot read that const before its declaration ran and threw
+    // `Cannot access 'globalConfig' before initialization`, which took the
+    // preview worker's plugin activation down with it. Lowering has to keep the
+    // read live, and the real loader is the one that has to boot it.
+    const vfs = loadVfsImage(await archive(), DEFAULT_ROOT)
+    const directory = `${DEFAULT_ROOT}/node_modules/cycle-probe`
+    const pair: Record<string, string> = {
+      'a.js': "import { members } from './b.js'\nexport const globalConfig = { ready: true }\nexport const read = () => members()\n",
+      'b.js': "import { globalConfig } from './a.js'\nexport const members = () => globalConfig.ready\n",
+    }
+    for (const [name, source] of Object.entries(pair)) {
+      const lowered = lowerModuleSource({ filename: `${directory}/${name}`, source })
+      expect(lowered.lowered).toBe(true)
+      vfs.seed(`${directory}/${name}`, lowered.code)
+    }
+    const loader = new WorkerModuleLoader({
+      vfs,
+      root: DEFAULT_ROOT,
+      staticModules: createNodeBuiltins(),
+      staticModulePrefixes: REPLACED_PREFIXES,
+    })
+    const required = loader.requireFrom(DEFAULT_ROOT)(`${directory}/a.js`) as {
+      globalConfig?: { readonly ready: boolean }
+      read?: () => boolean
+    }
+    expect(required.globalConfig?.ready).toBe(true)
+    expect(required.read?.()).toBe(true)
   })
 
   it('keeps third-party runtime JavaScript published under src', async () => {
