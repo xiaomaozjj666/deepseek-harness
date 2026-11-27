@@ -15,7 +15,12 @@ function property(nodes: readonly SchemaNode[], index: number, name: string): nu
   return field.type
 }
 
-it('requires compatibility review before request headers can carry retired system text', { timeout: 60_000 }, () => {
+// The scan reads every package's request-header sources and costs over a minute
+// on any machine that is not a large CI runner (~107s measured on a laptop,
+// where the former 60s budget already expired). This is a correctness gate, not
+// a speed claim, so the budget is generous; the coverage lanes' own budget wins
+// when it is larger.
+it('requires compatibility review before request headers can carry retired system text', { timeout: Math.max(240_000, Number(process.env.DSH_COVERAGE_TEST_TIMEOUT_MS ?? 0)) }, () => {
   const inventory = extractPersistenceSchema(resolve(import.meta.dirname, '..'))
   const before = inventory.roots.find(root => root.key === 'event:request/header')
   if (before === undefined) throw new Error('generated schema omits request/header')
