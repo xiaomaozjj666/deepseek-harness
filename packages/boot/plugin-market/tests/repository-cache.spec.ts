@@ -157,10 +157,16 @@ it('reports an unreachable host as a network failure, a failed local command as 
   const hanging = join(root, 'hanging-git')
   mkdirSync(hanging)
   const hangingGit = join(hanging, process.platform === 'win32' ? 'git.cmd' : 'git')
-  writeFileSync(hangingGit, process.platform === 'win32' ? '@echo off\r\nping -n 30 127.0.0.1 >nul\r\n' : '#!/bin/sh\nsleep 30\n')
+  // PATH below is the fake directory alone, so the fake Git must not rely on a
+  // PATH lookup for its own sleeper: `/bin/sh` could not find `sleep` on the
+  // hosted Linux runner and exited 127 instead of hanging. The fixture
+  // repository is built first because it needs the real Git.
+  writeFileSync(hangingGit, process.platform === 'win32'
+    ? '@echo off\r\n"%SystemRoot%\\System32\\ping.exe" -n 30 127.0.0.1 >nul\r\n'
+    : '#!/bin/sh\nexec /bin/sleep 30\n')
   chmodSync(hangingGit, 0o755)
-  vi.stubEnv('PATH', hanging)
   const other = repository('t2', { 'README.md': 'x' })
+  vi.stubEnv('PATH', hanging)
   await expectRejection(cache({ timeoutMs: 250 }).read(other.url, other.commit, 'README.md', 100, signal), { reason: 'git-unavailable' }, 'timed out')
   vi.stubEnv('PATH', join(root, 'no-git'))
   const missing = cache().read(other.url, other.commit, 'README.md', 100, signal)
