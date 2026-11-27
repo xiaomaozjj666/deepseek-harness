@@ -13,6 +13,10 @@ name: CI Windows
 # Python's "python checks passed".
 on:
   pull_request:
+  # Master HEAD gets the same verdicts as a pull request, as in ci.yml.
+  push:
+    branches:
+      - master
 permissions:
   contents: read
 

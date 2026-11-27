@@ -7,6 +7,11 @@ name: CI
 
 on:
   pull_request:
+  # Master HEAD gets the same verdicts as a pull request: a fix is only proven
+  # on the branch it lands on, not on the probe branch it was developed on.
+  push:
+    branches:
+      - master
 permissions:
   contents: read
 
