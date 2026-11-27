@@ -81,7 +81,8 @@ describe('Node compatibility self-hosted routing', () => {
   })
 
   it('preserves the supported version jobs and their concurrency', () => {
-    expect(job.if).toBe("github.event_name == 'pull_request'")
+    // Master pushes run this lane too, so it carries no event gate.
+    expect(job.if).toBeUndefined()
     expect(job.strategy['fail-fast']).toBe(false)
     expect(job.strategy.matrix.include).toEqual([
       { node: '24.9', name: 'node 24.9', runner: 'ubuntu-latest', gate_concurrency: '1' },

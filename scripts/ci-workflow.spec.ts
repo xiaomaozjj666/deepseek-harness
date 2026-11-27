@@ -431,7 +431,8 @@ describe('CI workflow', () => {
       const cores = jobName === 'windows-native-tests' ? 2 : 16
       expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_WINDOWS: 'blacksmith' } }))
         .toBe(`blacksmith-${cores}vcpu-windows-2025`)
-      expect(job.if).toBe("github.event_name == 'pull_request'")
+      // No event gate: a master push carries the same lanes as a pull request.
+      expect(job.if).toBeUndefined()
     }
 
     // windows-build runs the blocking build/site pair.
@@ -710,7 +711,8 @@ describe('CI workflow', () => {
       expect(evaluateRunsOn(benchmark['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: mode } })).toBe('ubuntu-24.04')
     }
     expect(JSON.stringify(benchmark.steps)).not.toContain('DSH_CI_FAILOVER_LINUX')
-    expect(benchmark.if).toBe("github.event_name == 'pull_request'")
+    // Master pushes run the benchmark lane too, so it carries no event gate.
+    expect(benchmark.if).toBeUndefined()
     expect(benchmark.needs).toBeUndefined()
     expect(benchmark['continue-on-error']).toBeUndefined()
     expect(benchmark.env).toBeUndefined()
@@ -799,16 +801,20 @@ describe('CI workflow', () => {
 
     // The exact event sets are what keep master-only jobs out of the PR check
     // panel: ci-master triggers only on push(master) + workflow_dispatch and
-    // never on pull_request; ci.yml is exactly pull_request-only. Assert the
-    // full sets so losing the wrong event, or gaining an extra one, fails.
+    // never on pull_request, while ci.yml and ci-windows.yml carry the same
+    // lanes on a pull request and on a master push so the branch a fix lands on
+    // gets its own verdict. Assert the full sets so losing the wrong event, or
+    // gaining an extra one, fails.
     if (!isRecord(workflow.on) || !isRecord(prWorkflow.on)) {
       throw new TypeError('both CI workflows must define on')
     }
     expect(Object.keys(workflow.on).sort()).toEqual(['push', 'workflow_dispatch'])
-    expect(Object.keys(prWorkflow.on)).toEqual(['pull_request'])
+    expect(Object.keys(prWorkflow.on).sort()).toEqual(['pull_request', 'push'])
+    expect(prWorkflow.on.push).toEqual({ branches: ['master'] })
     const windowsWorkflow = loadWorkflow('.github/workflows/ci-windows.yml')
     if (!isRecord(windowsWorkflow.on)) throw new TypeError('CI Windows workflow must define on')
-    expect(Object.keys(windowsWorkflow.on)).toEqual(['pull_request'])
+    expect(Object.keys(windowsWorkflow.on).sort()).toEqual(['pull_request', 'push'])
+    expect(windowsWorkflow.on.push).toEqual({ branches: ['master'] })
     expect(windowsWorkflow.concurrency).toEqual(workflow.concurrency)
     // Duplicated env must not drift: a Node bump on one lane only would run
     // Linux and Windows against different versions.

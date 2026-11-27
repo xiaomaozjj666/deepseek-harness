@@ -49,11 +49,18 @@ function evaluateCondition(expression: string, cancelled: boolean, results: stri
   }, { timeout: 1000 }) as boolean
 }
 
-const verdicts = [['ci.yml', 'all-checks-passed'], ['ci-windows.yml', 'windows-checks-passed'], ['ci-python.yml', 'python-checks-passed']] as const
+// `startsOnPush` records which aggregates also verdict a master push: ci.yml
+// and ci-windows.yml carry the pull-request lanes on push(master), while CI
+// Python stays pull-request-only.
+const verdicts = [
+  ['ci.yml', 'all-checks-passed', true],
+  ['ci-windows.yml', 'windows-checks-passed', true],
+  ['ci-python.yml', 'python-checks-passed', false],
+] as const
 
 describe('master-only platform scheduling', () => {
-  it.each(verdicts.flatMap(([file, job]) => ['success', 'failure', 'skipped', 'cancelled'].map(result => [file, job, result] as const)))(
-    '%s %s reports %s dependencies in active runs but never starts a cancelled-run verdict', (file, job, result) => {
+  it.each(verdicts.flatMap(([file, job, startsOnPush]) => ['success', 'failure', 'skipped', 'cancelled'].map(result => [file, job, result, startsOnPush] as const)))(
+    '%s %s reports %s dependencies in active runs but never starts a cancelled-run verdict', (file, job, result, startsOnPush) => {
       const aggregate = workflow(file).jobs[job]!
       const results = aggregate.needs!.map(() => 'success')
       results[0] = result
@@ -62,7 +69,7 @@ describe('master-only platform scheduling', () => {
       expect(condition).toContain('!cancelled()')
       expect(evaluateCondition(condition, false, results)).toBe(true)
       expect(evaluateCondition(condition, true, results)).toBe(false)
-      expect(evaluateCondition(condition, false, results, 'push')).toBe(false)
+      expect(evaluateCondition(condition, false, results, 'push')).toBe(startsOnPush)
       const failureStep = aggregate.steps!.find(step => step.name === 'Fail if any needed job did not succeed')!
       expect(evaluateCondition(failureStep.if!, false, results)).toBe(result !== 'success')
       expect(failureStep.run).toContain('exit 1')
