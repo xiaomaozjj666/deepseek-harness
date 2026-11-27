@@ -10,7 +10,12 @@
     baseURL: !!js process.env.DSH_SNAPSHOT_BASE_URL
     thinking: enabled
     reasoningEffort: low
-    streamIdleTimeoutMs: 150
+    # The fixture server emits comment heartbeats every 100 ms and only
+    # answers after six of them, so this budget still proves the comments keep
+    # the stream alive. It also leaves 300 ms of jitter headroom: a 150 ms
+    # budget tripped the idle watchdog on an oversubscribed shared runner,
+    # and the provider's default retry policy replayed the whole request.
+    streamIdleTimeoutMs: 400
 
 - id: agent-loop
   config:

@@ -18,7 +18,12 @@
         modelOverrides:
           deepseek-flash:
             maxTokens: 1024
-        streamIdleTimeoutMs: 1000
+        # This case proves the pi-ai route's compatibility defaults, not idle
+        # detection: the fixture server holds the stream open with comments
+        # until the title request arrives, and a saturated shared runner can
+        # stall the event loop for over a second, which a 1000 ms budget turned
+        # into a replayed request.
+        streamIdleTimeoutMs: 5000
 
 - id: agent-loop
   config:

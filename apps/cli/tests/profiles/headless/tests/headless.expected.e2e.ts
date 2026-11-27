@@ -96,6 +96,16 @@ async function expectHeadlessStream(normalized: string, expectedPath: string): P
   expect(parseJsonl(normalized)).toEqual(parseJsonl(expected))
 }
 
+/**
+ * Heartbeat cadence of the fixture server. The patched profile allows 400 ms
+ * of stream idle time, so comments every 100 ms keep the stream alive while a
+ * saturated shared runner still has room to delay one timer without tripping
+ * the idle watchdog into a request replay.
+ */
+const HEARTBEAT_INTERVAL_MS = 100
+/** Heartbeats written before a bounded (non-title-waiting) response. */
+const BOUNDED_HEARTBEATS = 6
+
 /** Serve one deterministic DeepSeek-compatible response while retaining its request body. */
 async function deepseekDefaultsServer(
   options: { waitForTitleRequest?: boolean; piAiCompatibility?: true } = {},
@@ -110,13 +120,13 @@ async function deepseekDefaultsServer(
       requests.push(JSON.parse(body) as JsonObject)
       paths.push(request.url ?? '')
       response.writeHead(200, { 'content-type': 'text/event-stream' })
-      let keepAlives = 3
+      let keepAlives = BOUNDED_HEARTBEATS
       const write = (): void => {
         // One-shot teardown may cancel background title work after the main response.
         if (keepAlives-- > 0
           || (options.waitForTitleRequest === true && !requests.some(isTitleRequest))) {
           response.write(': keep-alive\n\n')
-          timer = setTimeout(write, 60)
+          timer = setTimeout(write, HEARTBEAT_INTERVAL_MS)
           return
         }
         if (options.piAiCompatibility !== true) {
@@ -860,8 +870,20 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
-      expect(server.requests).toHaveLength(2)
-      expect(server.paths).toEqual(['/v1/messages', '/v1/messages'])
+      // A scheduling stall can still trip the idle watchdog, and the provider
+      // then replays the identical attempt. Assert the request shapes (agent
+      // defaults plus the title call) instead of an exact HTTP count, but
+      // reject unknown traffic and more than one replay so a retry storm
+      // still fails.
+      const kinds = server.requests.map((request) => {
+        if (request.max_tokens === 256_000) return 'agent'
+        if (isTitleRequest(request)) return 'title'
+        return 'unexpected'
+      })
+      expect(kinds).toEqual(expect.arrayContaining(['agent', 'title']))
+      expect(kinds).not.toContain('unexpected')
+      expect(server.requests.length).toBeLessThanOrEqual(3)
+      expect(server.paths.filter(path => path !== '/v1/messages')).toEqual([])
       const agentRequest = server.requests.find(request => request.max_tokens === 256_000)
       const titleRequest = server.requests.find(isTitleRequest)
       expect(titleRequest?.max_tokens).toBe(TITLE_MAX_TOKENS)
@@ -904,7 +926,7 @@ describe('headless stream-json snapshots', () => {
       try {
         const decoder = new TextDecoder()
         let body = ''
-        // Four heartbeats cross the ordinary fixture's three-heartbeat response.
+        // Heartbeats keep arriving while the title request is still absent.
         while (body.split(': keep-alive\n\n').length < 5) {
           const chunk = await reader.read()
           expect(chunk.done).toBe(false)
@@ -955,7 +977,13 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
-      expect(server.requests).toHaveLength(2)
+      // As in the DeepSeek defaults case, a stall can replay one attempt
+      // through the route's retry policy; assert the compatible shapes and
+      // reject unknown traffic or more than one replay instead of an exact
+      // HTTP count.
+      const kinds = server.requests.map(request => isTitleRequest(request) ? 'title' : 'agent')
+      expect(kinds).toEqual(expect.arrayContaining(['agent', 'title']))
+      expect(server.requests.length).toBeLessThanOrEqual(3)
       const agentRequest = server.requests.find(request => !isTitleRequest(request))
       const titleRequest = server.requests.find(isTitleRequest)
       expect(agentRequest).not.toHaveProperty('max_completion_tokens')
