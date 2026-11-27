@@ -192,12 +192,127 @@ check(
 }
 
 {
-  // Named imports are snapshots (CommonJS destructuring semantics), which is the
-  // documented, accepted divergence from ESM live bindings on the import side.
+  // Named imports read through the module object at each use (ESM live
+  // bindings), so an alias resolves to the imported name's value.
   const code = transformModule("import { a, b as c } from 'p'\nexport const out = [a, c]\n", 'probe.js')
   parsesAsScript('named imports', code)
+  contains('named import reads the module object at its use', code, '__dsh$m1["a"]')
+  contains('named import honours the alias', code, '__dsh$m1["b"]')
+  lacks('named import is not snapshotted at import time', code, 'const a=')
   const exports = runBody(code, () => ({ a: 1, b: 2 }))
   check('named import binds by imported name, honouring the alias', exports.out, [1, 2])
+}
+
+{
+  // Trap: a cycle whose read happens at import time. zod v4's core/util pair is
+  // the real case — core imports `members` from util, util imports the `const`
+  // `globalConfig` from core and only reads it inside functions. An eager
+  // snapshot reads that binding while the cycle is still unwinding and throws
+  // `Cannot access 'globalConfig' before initialization`; the live read defers
+  // to the first use, which is what ESM does.
+  const modules: Record<string, string> = {
+    'a.js': transformModule(
+      "import { members } from './b.js'\nexport const globalConfig = { ready: true }\nexport const read = () => members()\n",
+      'a.js',
+    ),
+    'b.js': transformModule(
+      "import { globalConfig } from './a.js'\nexport const members = () => globalConfig.ready\n",
+      'b.js',
+    ),
+  }
+  const registry = new Map<string, Record<string, unknown>>()
+  const load = (name: string): Record<string, unknown> => {
+    const cached = registry.get(name)
+    if (cached !== undefined) return cached
+    const exports: Record<string, unknown> = {}
+    registry.set(name, exports)
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- the wrapper contract under test is a `new Function` body
+    const factory = new Function(...WRAPPER_PARAMS, modules[name] as string) as (...args: unknown[]) => void
+    factory(
+      exports,
+      (specifier: string) => load(specifier.replace('./', '')),
+      { exports },
+      `/vfs/${name}`,
+      '/vfs',
+      { url: `file:///vfs/${name}` },
+      undefined,
+    )
+    return exports
+  }
+  let failure: unknown
+  let a: Record<string, unknown> = {}
+  try {
+    a = load('a.js')
+  } catch (reason) {
+    failure = reason
+  }
+  const outcome = failure === undefined ? 'loaded' : failure instanceof Error ? failure.message : 'threw a non-error'
+  check('a cyclic pair loads without a TDZ error', outcome, 'loaded')
+  check('the cycle publishes the exporting side', (a.globalConfig as { ready: boolean } | undefined)?.ready, true)
+  check('the cycle reads the other side once it is initialized', (a.read as () => boolean)(), true)
+}
+
+{
+  // Only references move to the module object. A property key, a member name,
+  // and a label are names, not reads, and a shorthand literal has to spell out
+  // the key the shorthand implied.
+  const code = transformModule([
+    "import { meta } from 'p'",
+    'export const literal = { meta: 1, other: meta }',
+    'export const member = literal.meta',
+    'export const shorthand = { meta }',
+    'outer: for (const item of [1]) { if (item === 1) break outer }',
+    '',
+  ].join('\n'), 'probe.js')
+  parsesAsScript('live import boundaries', code)
+  contains('object key stays a key', code, '{ meta: 1, other: __dsh$m1["meta"] }')
+  contains('member name stays a name', code, 'literal.meta')
+  contains('shorthand keeps its key', code, '{ meta: __dsh$m1["meta"] }')
+  const exports = runBody(code, () => ({ meta: 7 }))
+  check('literal built from a live import', exports.literal, { meta: 1, other: 7 })
+  check('member read through a live-import value', exports.member, 1)
+  check('shorthand keeps the imported name as its key', exports.shorthand, { meta: 7 })
+}
+
+{
+  // A local declaration or a write to the name rules the live read out: the
+  // rewrite would make those occurrences see the module object instead of the
+  // local binding, so the import keeps the snapshot it always had.
+  const shadowed = transformModule(
+    "import { a } from 'p'\nexport function pick(a) { return a }\nexport const out = pick(a)\n",
+    'probe.js',
+  )
+  parsesAsScript('shadowed named import', shadowed)
+  contains('a name declared in any scope keeps the snapshot', shadowed, 'const a=__dsh$m1["a"]')
+  check('a shadowed name still resolves locally', runBody(shadowed, () => ({ a: 1 })).out, 1)
+
+  const assigned = transformModule("import { a } from 'p'\nexport const bump = () => { a = 2 }\n", 'probe.js')
+  parsesAsScript('assigned named import', assigned)
+  contains('a written name keeps the snapshot', assigned, 'const a=__dsh$m1["a"]')
+}
+
+{
+  // `export { a }` publishes the same live read, so the exported getter tracks
+  // the module object instead of copying the value at import time.
+  const source = { a: 1 }
+  const code = transformModule("import { a } from 'p'\nexport { a }\n", 'probe.js')
+  parsesAsScript('live re-export of an import', code)
+  contains('the exported getter reads the module object', code, '__dsh$def(exports,"a",()=>__dsh$m1["a"])')
+  const exports = runBody(code, () => source)
+  check('exported import starts at the imported value', exports.a, 1)
+  source.a = 2
+  check('exported import stays live against its source', exports.a, 2)
+}
+
+{
+  // `createRequire` stays a value: request indexing recognizes its calls by the
+  // local name, which a live access would stop matching.
+  const code = transformModule(
+    "import { createRequire as makeRequire } from 'node:module'\nexport const load = () => makeRequire(import.meta.url)\n",
+    'probe.js',
+  )
+  parsesAsScript('createRequire import', code)
+  contains('createRequire keeps its snapshot', code, 'const makeRequire=__dsh$m1["createRequire"]')
 }
 
 {

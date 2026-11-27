@@ -645,36 +645,54 @@ describe('LocalPtySession readiness and output', () => {
     expect(operation.cancel()).toBe(false)
   })
 
-  it('does not reuse a pre-write stdin wait as post-write readiness', async () => {
-    vi.useFakeTimers()
-    const terminal = new FakeTerminal()
-    const inspector = new FakeInspector()
-    const session = makeSession(terminal, inspector, config())
-    await initialize(session, terminal)
-
-    inspector.waiting = true
-    const operation = session.startSend({ text: 'echo ready', submit: true })
-    let settled = false
-    void operation.done.then(() => { settled = true })
-    await vi.advanceTimersByTimeAsync(20)
-    expect(settled).toBe(false)
-
-    inspector.waiting = false
-    await vi.advanceTimersByTimeAsync(10)
-    expect(settled).toBe(false)
-    inspector.waiting = true
-    await vi.advanceTimersByTimeAsync(10)
-    expect((await operation.done).waitReason).toBe('stdin_read')
-  })
-
-  it('tracks a pre-write wait exit before exact probing begins', async () => {
+  it('keeps echo streaming past the exact-probe window without settling in the shell group', async () => {
     vi.useFakeTimers()
     const terminal = new FakeTerminal()
     const inspector = new FakeInspector()
     const session = makeSession(terminal, inspector, config({
-      exactProbeAfterMs: 50,
-      idleSilenceMs: 100,
-      timeoutMs: 200,
+      exactProbeAfterMs: 20,
+      idleSilenceMs: 200,
+      timeoutMs: 1_000,
+    }))
+    await initialize(session, terminal)
+
+    // A line editor consumes the written line as keystrokes: it leaves and
+    // re-enters the same-group wait between echo chunks, and on a slow host the
+    // echo itself spans many polls. None of that is command completion, so the
+    // operation must keep collecting instead of settling mid-echo and dropping
+    // the output that follows.
+    inspector.waiting = true
+    const operation = session.startSend({ text: 'Write-Output "console=utf-8 out=utf-8"', submit: true })
+    let settled = false
+    void operation.done.then(() => { settled = true })
+    for (const chunk of ['Write-Output ', '"console=utf-8 ', 'out=utf-8"']) {
+      inspector.waiting = false
+      await vi.advanceTimersByTimeAsync(10)
+      terminal.emitData(chunk)
+      inspector.waiting = true
+      await vi.advanceTimersByTimeAsync(10)
+    }
+    expect(settled).toBe(false)
+
+    terminal.emitData('\r\nconsole=utf-8 out=utf-8\r\n')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(settled).toBe(false)
+
+    terminal.emitData('\x1b]133;D;0\x07dsh> ')
+    await vi.advanceTimersByTimeAsync(20)
+    const result = await operation.done
+    expect(result.waitReason).toBe('stdin_read')
+    expect(result.viewport).toContain('console=utf-8 out=utf-8')
+  })
+
+  it('settles a shell-group wait only through the prompt marker', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const inspector = new FakeInspector()
+    const session = makeSession(terminal, inspector, config({
+      exactProbeAfterMs: 20,
+      idleSilenceMs: 300,
+      timeoutMs: 1_000,
     }))
     await initialize(session, terminal)
 
@@ -685,10 +703,29 @@ describe('LocalPtySession readiness and output', () => {
     inspector.waiting = false
     await vi.advanceTimersByTimeAsync(10)
     inspector.waiting = true
-    await vi.advanceTimersByTimeAsync(30)
+    await vi.advanceTimersByTimeAsync(80)
     expect(settled).toBe(false)
-    await vi.advanceTimersByTimeAsync(10)
-    expect(settled).toBe(true)
+
+    terminal.emitData('\x1b]133;D;0\x07dsh> ')
+    await vi.advanceTimersByTimeAsync(20)
+    expect((await operation.done).waitReason).toBe('stdin_read')
+  })
+
+  it('accepts the wait of a foreground child that already owned the terminal', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const inspector = new FakeInspector()
+    const session = makeSession(terminal, inspector, config())
+    await initialize(session, terminal)
+
+    // A prompt from a running child REPL, then input typed into it: the group
+    // that owns the foreground after the write is the child's, not the shell's,
+    // so its wait is completion evidence even though it matches the pre-write
+    // sample.
+    inspector.pgid = 789
+    inspector.waiting = true
+    const operation = session.startSend({ text: 'accepted', submit: true })
+    await vi.advanceTimersByTimeAsync(30)
     expect((await operation.done).waitReason).toBe('stdin_read')
   })
 
