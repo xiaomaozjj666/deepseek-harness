@@ -45,6 +45,24 @@ const REMOVED_SWITCHES = ['-Fix', '-GrantFullControl', '-Compact']
 // Process creation and Add-Type compilation share the Windows coverage budget.
 const timeout = Math.max(90_000, Number(process.env.DSH_COVERAGE_TEST_TIMEOUT_MS ?? 0))
 
+/**
+ * The repair cases below build a fixture whose current user lacks WRITE_DAC and
+ * WRITE_OWNER. An elevated administrator token defeats that premise: the explicit
+ * BUILTIN\Administrators FullControl ACE keeps WRITE_DAC true, so the script
+ * correctly classifies the directory as healthy and no repair class applies.
+ * GitHub-hosted Windows runners run elevated; a filtered self-hosted token still
+ * runs these cases.
+ */
+function elevatedAdminToken(): boolean {
+  try {
+    return execFileSync('whoami.exe', ['/groups'], { encoding: 'utf8' }).includes('S-1-16-12288')
+  } catch {
+    return false
+  }
+}
+
+const deniedFixtureAvailable = !elevatedAdminToken()
+
 // Vitest's asymmetric factories return any; expected matchers are opaque values.
 const containingObject = (value: Record<string, unknown>): unknown => expect.objectContaining(value)
 const containingArray = (value: unknown[]): unknown => expect.arrayContaining(value)
@@ -241,7 +259,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('grants full control to a directory that lacks WRITE_DAC and WRITE_OWNER, preserving owner and label', () => {
+  it.skipIf(!deniedFixtureAvailable)('grants full control to a directory that lacks WRITE_DAC and WRITE_OWNER, preserving owner and label', () => {
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'missing-write-owner')
@@ -268,7 +286,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('repairs a missing grant and a package ACE in the same invocation', () => {
+  it.skipIf(!deniedFixtureAvailable)('repairs a missing grant and a package ACE in the same invocation', () => {
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'both')
@@ -335,7 +353,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('repairs the whole subtree in one run when only the workspace root is named', () => {
+  it.skipIf(!deniedFixtureAvailable)('repairs the whole subtree in one run when only the workspace root is named', () => {
     const scratch = newScratch()
     try {
       // The sandbox reports its provisioning failure on the workspace root while the
@@ -374,7 +392,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('keeps an inherit-only ACE when it grants the missing right', () => {
+  it.skipIf(!deniedFixtureAvailable)('keeps an inherit-only ACE when it grants the missing right', () => {
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'inherit-only')
@@ -561,7 +579,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('restores every attempted change in reverse order when a later path fails', () => {
+  it.skipIf(!deniedFixtureAvailable)('restores every attempted change in reverse order when a later path fails', () => {
     const scratch = newScratch()
     try {
       const out = join(scratch, 'out')
@@ -583,7 +601,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('prints the pending recovery command and reports restore_pending_then_stop when rollback fails', () => {
+  it.skipIf(!deniedFixtureAvailable)('prints the pending recovery command and reports restore_pending_then_stop when rollback fails', () => {
     const scratch = newScratch()
     try {
       const out = join(scratch, 'out')
@@ -801,7 +819,7 @@ function icacls { throw [System.IO.IOException]::new('icacls unavailable') }
     }
   }, timeout)
 
-  it('repairs its own workspace root when -AllowRoot is the object itself', () => {
+  it.skipIf(!deniedFixtureAvailable)('repairs its own workspace root when -AllowRoot is the object itself', () => {
     const scratch = newScratch()
     try {
       const out = join(scratch, 'out')
@@ -823,7 +841,7 @@ function icacls { throw [System.IO.IOException]::new('icacls unavailable') }
     }
   }, timeout)
 
-  it('is idempotent: a second repair run changes nothing', () => {
+  it.skipIf(!deniedFixtureAvailable)('is idempotent: a second repair run changes nothing', () => {
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'idempotent')

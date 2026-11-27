@@ -5,7 +5,7 @@
  * production confined execution walks.
  */
 
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -33,6 +33,21 @@ function runRunner(args: string[], timeoutMs = 30_000) {
 }
 
 describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
+  /**
+   * The deny fixtures below assume the caller is not an elevated administrator:
+   * an elevated token carries BUILTIN\Administrators, whose explicit
+   * FullControl ACE keeps the opens these cases expect to be denied. GitHub-hosted
+   * Windows runners run elevated, so the fixture-dependent case skips there and
+   * still runs on a filtered self-hosted token.
+   */
+  const elevatedAdminToken = (): boolean => {
+    try {
+      return execFileSync('whoami.exe', ['/groups'], { encoding: 'utf8' }).includes('S-1-16-12288')
+    } catch {
+      return false
+    }
+  }
+  const deniedFixtureAvailable = !elevatedAdminToken()
   let scratchRoot!: string
   let writableDir!: string
   let isolatedTemp!: string
@@ -526,7 +541,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
-  it('a FullControl open inside a granted root still works for files (the deny inherits to containers only)', () => {
+  it.skipIf(!deniedFixtureAvailable)('a FullControl open inside a granted root still works for files (the deny inherits to containers only)', () => {
     // The ambient-delete deny is 0x40, a member of FILE_ALL_ACCESS: inheriting
     // it onto files would deny every GENERIC_ALL/FullControl open by the user,
     // Administrators, SYSTEM, or the DSH host. Directories inside a granted

@@ -236,7 +236,10 @@ describe('the per-slot report budget', () => {
 })
 
 describe('the real workspace surface', () => {
-  it('collects every declared slot with a teachable contract', { timeout: 30_000 }, () => {
+  // The workspace scan walks every package on disk. The coverage lanes pass a
+  // 90s budget because a shared hosted runner is slower than the pool the
+  // suite grew up on; the 30s floor still bounds a bare local run.
+  it('collects every declared slot with a teachable contract', { timeout: Math.max(30_000, Number(process.env.DSH_COVERAGE_TEST_TIMEOUT_MS ?? 0)) }, () => {
     const entries = collectSlotEntries(process.cwd())
     expect(entries.length).toBeGreaterThan(30)
     for (const entry of entries) {

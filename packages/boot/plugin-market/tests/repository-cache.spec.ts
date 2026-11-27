@@ -1,7 +1,7 @@
 /** Partial clones of real local repositories: reads, README lookup, limits, eviction, and Git failures. */
 import { execFileSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -149,9 +149,19 @@ it('reports an unreachable host as a network failure, a failed local command as 
   await expect(broken).rejects.toThrow('git update-ref')
   await expect(broken).rejects.not.toBeInstanceOf(DetailFailure)
   expect(readdirSync(join(root, 'cache'))).toEqual([])
-  // Git that cannot answer `git --version` within the deadline cannot run.
+  // Git that cannot answer `git --version` within the deadline cannot run. The
+  // fake `git` hangs instead of a 1ms deadline on the real one: on a fast runner
+  // the version probe can beat any tiny deadline, and the next command (`git
+  // init`) then times out instead — the same refusal reported under a different
+  // command, which made this assertion machine-speed dependent.
+  const hanging = join(root, 'hanging-git')
+  mkdirSync(hanging)
+  const hangingGit = join(hanging, process.platform === 'win32' ? 'git.cmd' : 'git')
+  writeFileSync(hangingGit, process.platform === 'win32' ? '@echo off\r\nping -n 30 127.0.0.1 >nul\r\n' : '#!/bin/sh\nsleep 30\n')
+  chmodSync(hangingGit, 0o755)
+  vi.stubEnv('PATH', hanging)
   const other = repository('t2', { 'README.md': 'x' })
-  await expectRejection(cache({ timeoutMs: 1 }).read(other.url, other.commit, 'README.md', 100, signal), { reason: 'git-unavailable' }, 'timed out')
+  await expectRejection(cache({ timeoutMs: 250 }).read(other.url, other.commit, 'README.md', 100, signal), { reason: 'git-unavailable' }, 'timed out')
   vi.stubEnv('PATH', join(root, 'no-git'))
   const missing = cache().read(other.url, other.commit, 'README.md', 100, signal)
   await expectRejection(missing, { reason: 'git-unavailable' }, 'git --version')
